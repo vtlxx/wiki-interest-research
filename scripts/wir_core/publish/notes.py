@@ -43,9 +43,11 @@ def parse_notes(text: str) -> dict[str, str]:
         raise WirError("NOTES_INCOMPLETE", f"notes.md lacks the section(s): {', '.join(missing)}",
                        fix=f"Write text under the heading(s) {', '.join(_names(k) for k in missing)} in notes.md "
                            "(keep the headings), then run wir publish again.", exit_code=EXIT_USAGE)
-    for key, body in out.items():
-        if len(body) > LIMITS[key]:
-            raise WirError("NOTES_TOO_LONG", f"section '{key}' has {len(body)} characters (limit {LIMITS[key]})",
-                           fix=f"Shorten the {_names(key)} section of notes.md to at most {LIMITS[key]} characters, "
-                               "then run wir publish again.", exit_code=EXIT_USAGE)
+    long = [(k, len(body)) for k, body in out.items() if len(body) > LIMITS[k]]
+    if long:
+        raise WirError("NOTES_TOO_LONG",
+                       "; ".join(f"section '{k}' has {n} characters (limit {LIMITS[k]})" for k, n in long),
+                       fix="Shorten " + ", ".join(f"the {_names(k)} section to at most {LIMITS[k]} characters"
+                                                  for k, _ in long) + " in notes.md, then run wir publish again.",
+                       exit_code=EXIT_USAGE)
     return out

@@ -45,3 +45,9 @@ def test_too_long():
 def test_template_placeholder_not_filled():
     with pytest.raises(WirError):
         parse_notes("## Висновок\n\n## Рекомендація\n\n<!-- facts:\n- 5%\n-->\n")
+
+
+def test_all_long_sections_reported_at_once():
+    with pytest.raises(WirError) as e:
+        parse_notes("## Conclusion\n" + "x" * 500 + "\n## Recommendation\n" + "y" * 500 + "\n")
+    assert "'Conclusion'" in e.value.fix and "'Recommendation'" in e.value.fix

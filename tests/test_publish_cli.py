@@ -32,11 +32,14 @@ def test_publish_ok_with_numbers_from_facts(cli_fixtures, run_cli):
 
 
 def test_publish_rejects_invented_number(cli_fixtures, run_cli):
-    project, _ = prepared(cli_fixtures, run_cli)
-    write_notes(project, "Інтерес виріс у 7,77 раза.", "Запускати.")
+    project, env = prepared(cli_fixtures, run_cli)
+    write_notes(project, "Інтерес виріс у 7,77 раза, а частка впала на 49% і ще раз на 49%.", "Запускати.")
     code, out = run_cli("publish")
-    assert code == 6 and out["error"]["code"] == "NUMBERS_NOT_IN_DATA"
-    assert "7,77 →" in out["error"]["message"] and "notes.md" in out["error"]["fix"]
+    msg = out["error"]["message"]
+    assert code == 6 and out["error"]["code"] == "NUMBERS_NOT_IN_DATA" and "notes.md" in out["error"]["fix"]
+    assert "Висновок: «Інтерес виріс у 7,77 раза" in msg and "7,77 →" in msg
+    growth = env["facts"]["cs"]["growth"].lstrip("+-")          # the nearest percentages come first
+    assert msg.count("49% →") == 1 and f"49% → {growth}" in msg and msg.count(" / ") >= 4
     assert not (project / "report.pdf").exists()
 
 
@@ -65,6 +68,9 @@ def test_publish_unsupported_script(cli_fixtures, run_cli):
     write_notes(project, "兴趣下降。", "研究。")
     code, out = run_cli("publish")
     assert out["error"]["code"] == "SCRIPT_UNSUPPORTED" and "--ui en" in out["error"]["fix"]
+    write_notes(project, "الاهتمام ينخفض.", "بحث.")                  # DejaVu has Arabic glyphs but no shaping
+    code, out = run_cli("publish")
+    assert out["error"]["code"] == "SCRIPT_UNSUPPORTED"
     write_notes(project, "Interest changed.", "Run a survey.", ui="en")
     code, out = run_cli("publish", "--ui", "en")
     assert code == 0

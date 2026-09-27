@@ -7,14 +7,15 @@ from pathlib import Path
 from .. import project as pj
 from ..envelope import make
 from ..errors import EXIT_NODATA, EXIT_NUMCHECK, EXIT_USAGE, WirError
-from ..i18n import lang_name, t, ui_lang
+from ..i18n import t, ui_lang
 from ..summary import summarize
 from .markdown import render_md
-from .notes import parse_notes
-from .numcheck import strings, allowed_values, check, nearest
-from .pdf import font_covers, render_pdf
+from .notes import KEYS, parse_notes
+from .numcheck import allowed_values, check, nearest_values
+from .pdf import font_covers, render_pdf, rtl_chars
 
-MAX_LISTED = 8
+MAX_LISTED = 6
+SNIPPET = 24
 
 
 def _charts(analysis: dict, p: pj.Project, ui: str) -> dict[str, Path]:
@@ -30,15 +31,33 @@ def _charts(analysis: dict, p: pj.Project, ui: str) -> dict[str, Path]:
     return render_all(analysis, p.dir / f"charts-{ui}", ui)   # always redrawn: the analysis may be newer
 
 
-def _num(v: float) -> str:
-    return f"{v:.0f}" if v.is_integer() else f"{v:g}"
+def _num(v: float, ui: str, percent: bool) -> str:
+    text = f"{v:.0f}" if v.is_integer() else f"{v:g}"
+    return (text.replace(".", ",") if ui == "uk" else text) + ("%" if percent else "")
+
+
+def _bad_numbers(notes: dict[str, str], allowed: list[float], ui: str) -> list[str]:
+    """One line per wrong number: section, the words around it, and the closest values of the data."""
+    items, seen = [], set()
+    for key, text in notes.items():
+        for tok in check(text, allowed):
+            if (key, tok.text) in seen:
+                continue
+            seen.add((key, tok.text))
+            a, b = max(0, tok.pos - SNIPPET), tok.pos + len(tok.text) + SNIPPET
+            snippet = ("…" if a else "") + text[a:b].strip() + ("…" if b < len(text) else "")
+            options = " / ".join(_num(v, ui, tok.percent) for v in nearest_values(tok, allowed))
+            written = tok.text + ("%" if tok.percent else "")
+            items.append(f"{t(ui, KEYS[key])}: «{snippet}» {written} → {options or '—'}")
+    return items
 
 
 def run_publish(args) -> dict:
     p = pj.load(args.project)
     path = p.dir / "analysis.json"
     if not path.exists():
-        raise WirError("NOT_ANALYZED", "run the analysis before publishing", fix="wir analyze", exit_code=EXIT_NODATA)
+        raise WirError("NOT_ANALYZED", "run the analysis before publishing",
+                       fix="wir analyze, then run wir publish again", exit_code=EXIT_NODATA)
     if (p.dir / ".stale").exists():
         raise WirError("STALE_ANALYSIS", "the project changed after the last analysis",
                        fix="wir analyze, then run wir publish again", exit_code=EXIT_NODATA)
@@ -53,28 +72,30 @@ def run_publish(args) -> dict:
     summary = analysis["summary"] if ui == ui_lang(analysis["project"]["ui"]) else summarize(analysis, ui)
 
     allowed = allowed_values(analysis, summary)
-    bad = check("\n".join(notes.values()), allowed)
+    bad = _bad_numbers(notes, allowed, ui)
     if bad:
-        items = "; ".join(f"{b.text} → {_num(nearest(b, allowed))}" for b in bad[:MAX_LISTED])
         more = f" (+{len(bad) - MAX_LISTED})" if len(bad) > MAX_LISTED else ""
-        raise WirError("NUMBERS_NOT_IN_DATA", t(ui, "publish.bad_numbers", items=items + more),
+        raise WirError("NUMBERS_NOT_IN_DATA", t(ui, "publish.bad_numbers", items="; ".join(bad[:MAX_LISTED]) + more),
                        fix=f"In {pj.rel(notes_path)} replace each listed number with the value after the arrow "
-                           "(nearest number in the data) if it means the same thing, otherwise copy the number from "
-                           "the facts or remove it; then run wir publish again.", exit_code=EXIT_NUMCHECK)
+                           "that means the same thing (copy it as it is written in the facts), or delete the number; "
+                           "then run wir publish again.", exit_code=EXIT_NUMCHECK)
 
-    proj = analysis["project"]
-    shown = " ".join([*notes.values(), *strings(summary), proj.get("label") or proj.get("topic") or "",
-                      *(lang_name(code, ui) for code in proj["langs"])])
-    missing_glyphs = font_covers(shown)
+    written = " ".join(notes.values())
+    missing_glyphs = font_covers(written) | rtl_chars(written)
     if missing_glyphs:
-        raise WirError("SCRIPT_UNSUPPORTED", f"the PDF font cannot draw: {''.join(sorted(missing_glyphs))[:20]}",
+        raise WirError("SCRIPT_UNSUPPORTED", f"the PDF cannot draw this text of the notes: "
+                                             f"{''.join(sorted(missing_glyphs))[:20]}",
                        fix=f"Rewrite {pj.rel(notes_path)} in English (headings 'Conclusion' and 'Recommendation'), "
                            "then run: wir publish --ui en", exit_code=EXIT_USAGE)
 
     charts = _charts(analysis, p, ui)
     pdf_path, md_path = p.dir / "report.pdf", p.dir / "report.md"
     tmp = p.dir / "report.pdf.tmp"
-    pages = render_pdf(analysis, summary, notes, charts, tmp, ui)
+    try:
+        pages = render_pdf(analysis, summary, notes, charts, tmp, ui)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
     if pages != 1:
         tmp.unlink(missing_ok=True)
         raise WirError("PDF_OVERFLOW", "the report does not fit on one page",
