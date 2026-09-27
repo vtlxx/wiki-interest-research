@@ -37,6 +37,8 @@ class FixtureTransport(httpx.BaseTransport):
                                       headers={"content-type": data.get("content_type", "application/json")},
                                       request=request)
         self.misses.append(url)
+        if url.endswith(".tsv"):  # daily dataset files exceed the recording limit and are never recorded
+            return httpx.Response(404, content=b"", request=request)
         if self.strict:
             raise AssertionError(f"no fixture for {url} (record it with WIR_RECORD=<dir>)")
         return httpx.Response(404, content=b"", request=request)

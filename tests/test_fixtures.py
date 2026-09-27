@@ -25,3 +25,9 @@ def test_non_strict_miss_is_404(tmp_path):
     t = FixtureTransport([tmp_path], strict=False)
     resp = httpx.Client(transport=t).get("https://example.org/zzz")
     assert resp.status_code == 404 and t.misses == ["https://example.org/zzz"]
+
+
+def test_tsv_miss_is_404_even_when_strict(tmp_path):
+    t = FixtureTransport([tmp_path])
+    resp = httpx.Client(transport=t).get("https://example.org/day.tsv")
+    assert resp.status_code == 404 and t.misses == ["https://example.org/day.tsv"]
