@@ -4,6 +4,7 @@ from __future__ import annotations
 import html
 import json
 import re
+import sys
 from dataclasses import replace
 from datetime import date, timedelta
 from urllib.parse import urlsplit
@@ -22,6 +23,8 @@ MAX_PV_REQUESTS = 6          # prop=pageviews continuation budget per call of vi
 MAX_MOVE_LOOKUPS = 30        # move-log lookups per article
 _PUBLICATION = re.compile(r"\b(scholarly|scientific|journal) article\b|\bthesis\b|\bpreprint\b", re.I)
 _TAG = re.compile(r"<[^>]+>")
+# MediaWiki error codes that mean "try again later", not "bad input".
+_TRANSIENT = {"ratelimited", "maxlag", "readonly", "internal_api_error_DBQueryError"}
 
 
 def _chunks(items: list, size: int):
@@ -35,7 +38,12 @@ def _check(data: dict | None) -> dict:
                        fix="Run the same command again.", exit_code=EXIT_NETWORK)
     if "error" in data:
         err = data["error"]
-        raise WirError("MEDIAWIKI_ERROR", f"{err.get('code')}: {err.get('info')}",
+        code = str(err.get("code", ""))
+        if code in _TRANSIENT or code.startswith("internal_api_error"):
+            raise WirError("MEDIAWIKI_ERROR", f"{code}: {err.get('info')}",
+                           fix="Wikimedia is busy; run the same command again in a minute.",
+                           exit_code=EXIT_NETWORK)
+        raise WirError("MEDIAWIKI_ERROR", f"{code}: {err.get('info')}",
                        fix="Check the language code and the title.", exit_code=EXIT_USAGE)
     return data
 
@@ -57,6 +65,7 @@ class WikimediaProvider:
         base = {"project_totals", "redirects", "moves", "geo", "spike_geo"}
         self.capabilities = frozenset(base | ({"wikidata"} if source != "wiktionary" else set()))
         self._sites_cache: dict[str, dict] | None = None
+        self._closed: set[str] = set()
         self._created_cache: dict[tuple[str, str], date | None] = {}
 
     # ---- languages ---------------------------------------------------------------------------
@@ -69,9 +78,12 @@ class WikimediaProvider:
                 if not key.isdigit():
                     continue
                 for site in entry.get("site", []):
-                    if site.get("code") != SITE_CODE[self.source] or "closed" in site:
+                    if site.get("code") != SITE_CODE[self.source]:
                         continue
                     lang = urlsplit(site["url"]).netloc.split(".")[0]
+                    if "closed" in site:
+                        self._closed.add(lang)
+                        continue
                     sites[lang] = {"dbname": site["dbname"],
                                    "name": entry.get("localname") or entry.get("name") or lang}
             self._sites_cache = sites
@@ -86,9 +98,10 @@ class WikimediaProvider:
         alias = aliases.get(typed)
         if alias and alias in sites:
             return alias, f"'{code}' is not a {self.source} language code; using '{alias}' ({sites[alias]['name']})."
-        raise WirError("UNKNOWN_LANG", f"'{code}' is not an open {self.source} language edition",
+        what = "is a closed" if typed in self._closed else "is not an open"
+        raise WirError("UNKNOWN_LANG", f"'{code}' {what} {self.source} language edition",
                        fix="Use wiki language codes such as uk, pl, cs, en, de, fr, es "
-                           "(list: https://meta.wikimedia.org/wiki/List_of_Wikipedias).")
+                           "(list: https://meta.wikimedia.org/wiki/Special:SiteMatrix).")
 
     def lang_name(self, lang: str) -> str:
         return self._sites().get(lang, {}).get("name", lang)
@@ -177,22 +190,30 @@ class WikimediaProvider:
         return self._created_cache[key]
 
     def inspect(self, lang: str, titles: list[str]) -> dict[str, PageInfo]:
+        """Canonical page for each requested title; 'Title#Section' is looked up as a section of 'Title'."""
         out: dict[str, PageInfo] = {}
         for chunk in _chunks(list(dict.fromkeys(titles)), 20):
-            data = self._api(lang, {"action": "query", "titles": "|".join(chunk), "redirects": 1,
+            bases = {t: t.partition("#")[0].strip() for t in chunk}
+            data = self._api(lang, {"action": "query", "titles": "|".join(dict.fromkeys(bases.values())),
+                                    "redirects": 1, "converttitles": 1,
                                     "prop": "info|pageprops|extracts", "ppprop": "disambiguation|wikibase_item",
                                     "exintro": 1, "explaintext": 1, "exsentences": 1, "exlimit": 20})
             q = data.get("query", {})
             norm = {n["from"]: n["to"] for n in q.get("normalized", [])}
+            conv = {c["from"]: c["to"] for c in q.get("converted", [])}  # script variants (zh, sr, kk, ...)
             redirs = {r["from"]: r for r in q.get("redirects", [])}
             pages = {p["title"]: p for p in q.get("pages", [])}
             for requested in chunk:
-                name, fragment, was_redirect = norm.get(requested, requested), None, False
+                name = norm.get(bases[requested], bases[requested])
+                name, fragment, was_redirect = conv.get(name, name), None, False
                 for _ in range(3):  # follow short redirect chains
                     r = redirs.get(name)
                     if not r:
                         break
                     was_redirect, fragment, name = True, r.get("tofragment") or fragment, r["to"]
+                asked_section = requested.partition("#")[2].strip()
+                if asked_section:
+                    was_redirect, fragment = True, asked_section
                 page = pages.get(name)
                 if page is None or page.get("missing") or page.get("invalid") or page.get("ns", 0) != 0:
                     out[requested] = PageInfo(lang, requested, None, MISSING)
@@ -228,12 +249,16 @@ class WikimediaProvider:
                                         "pvipdays": 60, **cont})
                 requests += 1
                 q = data.get("query", {})
-                back = {n["to"]: n["from"] for n in q.get("normalized", [])}
+                back: dict[str, list[str]] = {}
+                for n in q.get("normalized", []):
+                    back.setdefault(n["to"], []).append(n["from"])
                 for page in q.get("pages", []):
                     views = page.get("pageviews")
-                    title = back.get(page.get("title"), page.get("title"))
-                    if views is not None and title in result:
-                        result[title] = int(sum(v or 0 for v in views.values()))
+                    if views is None:
+                        continue
+                    for title in (page.get("title"), *back.get(page.get("title"), [])):
+                        if title in result:
+                            result[title] = int(sum(v or 0 for v in views.values()))
                 if "continue" not in data:
                     break
                 cont = data["continue"]
@@ -254,13 +279,20 @@ class WikimediaProvider:
         return [Redirect(t, views.get(t), f) for t, f in items]
 
     def moves(self, lang: str, titles: list[str]) -> list[Move]:
+        """Article-to-article renames whose old title is one of `titles` (the move log is indexed by the old
+        title). Moves into other namespaces (drafts, page-swap scratch titles) are dropped. A rename whose old
+        title is no longer a redirect to the article is only found if the caller passes that old title."""
+        unique = list(dict.fromkeys(titles))
+        if len(unique) > MAX_MOVE_LOOKUPS:
+            print(f"[wir] move log checked for {MAX_MOVE_LOOKUPS} of {len(unique)} titles", file=sys.stderr)
         out: set[Move] = set()
-        for title in list(dict.fromkeys(titles))[:MAX_MOVE_LOOKUPS]:
+        for title in unique[:MAX_MOVE_LOOKUPS]:
             data = self._api(lang, {"action": "query", "list": "logevents", "letype": "move", "letitle": title,
                                     "lelimit": 50, "leprop": "title|details|timestamp"})
             for ev in data.get("query", {}).get("logevents", []):
-                target = ev.get("params", {}).get("target_title")
-                if target and ev.get("title"):
+                params = ev.get("params", {})
+                target = params.get("target_title")
+                if target and ev.get("title") and ev.get("ns") == 0 and params.get("target_ns") == 0:
                     out.add(Move(date.fromisoformat(ev["timestamp"][:10]), ev["title"], target))
         return sorted(out, key=lambda m: (m.when, m.source))
 
