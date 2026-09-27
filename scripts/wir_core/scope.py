@@ -15,6 +15,7 @@ from .providers.base import (BADGE_REDIRECT, DISAMBIGUATION, MISSING, PROXY, SEC
 
 QID = re.compile(r"Q\d+", re.I)
 PROBLEM_STATUSES = {MISSING, DISAMBIGUATION}
+SNIPPET = 50  # characters of a search snippet shown in an option label (stdout stays <= 3000 bytes)
 
 
 def pick_candidate(cands: list[Candidate]) -> Candidate | None:
@@ -82,8 +83,8 @@ def _topic_ask(topic: str, cands: list[Candidate], ui: str, flags: list[str]) ->
 
 
 def _title_ask(provider, p: pj.Project, lang: str, title: str, reason_key: str, notes: list[str]) -> dict:
-    options = [{"label": f"{hit} — {snippet[:80]}", "cmd": f"wir scope --set {lang}={shlex.quote(hit)}"}
-               for hit, snippet in provider.search_in_wiki(lang, title, 3)]
+    options = [{"label": f"{hit} — {snippet[:SNIPPET]}", "cmd": f"wir scope --set {lang}={shlex.quote(hit)}"}
+               for hit, snippet in provider.search_in_wiki(lang, title, 4) if hit != title][:3]
     options.append({"label": t(p.ui, "opt.own"), "cmd": f'wir scope --set {lang}="<title>"'})
     return make("input_required", project=pj.rel(p.dir), caveats=notes, ask={
         "question": t(p.ui, "ask.bad_title", title=title, lang=lang_name(lang, p.ui), reason=t(p.ui, reason_key)),
@@ -118,8 +119,9 @@ def coverage_envelope(p: pj.Project, provider, notes: list[str]) -> dict:
             caveats.append(t(ui, "note.section", lang=name, title=main.title))
         if entry.status == PROXY and main:
             caveats.append(t(ui, "note.proxy", lang=name, title=main.title))
-        facts[lang] = {"status": entry.status, "article": main.title if main else "—",
-                       "created": main.created if main else None, "articles": len(entry.articles)}
+        facts[lang] = {"status": entry.status, "article": main.title if main else "—"}  # details: project.json
+        if extras > 0:
+            facts[lang]["articles"] = len(entry.articles)
     problem = next((lang for lang in p.langs if _entry(p, lang).status in PROBLEM_STATUSES), None)
     files = {"project": pj.rel(p.dir / "project.json")}
     if problem:
@@ -134,7 +136,7 @@ def coverage_envelope(p: pj.Project, provider, notes: list[str]) -> dict:
         else:
             question = t(ui, "ask.missing", lang=name, source=p.source, label=p.label)
             for hit, snippet in provider.search_in_wiki(problem, _search_text(p, provider), 5):
-                options.append({"label": f"{hit} — {snippet[:80]}",
+                options.append({"label": f"{hit} — {snippet[:SNIPPET]}",
                                 "cmd": f"wir scope --set {problem}={shlex.quote(hit)}"})
             options.append({"label": t(ui, "opt.own"), "cmd": f'wir scope --set {problem}="<title>"'})
         return make("input_required", project=pj.rel(p.dir), say=say, facts=facts, caveats=caveats,

@@ -1,3 +1,4 @@
+import json
 import shlex
 
 import pytest
@@ -148,7 +149,7 @@ def test_bad_set_title_asks_but_keeps_the_other_edits(fake):
     scope.run_scope(scope_args("Q1666254", langs="pl,cs,uk", ui="en"))
     env = scope.run_scope(scope_args(drop_lang=["uk"], set_title=["pl=Post", "cs=Přerušovaný půst"]))
     assert env["state"] == "input_required" and "disambiguation" in env["ask"]["question"]
-    assert "wir scope --set pl='Głodówka lecznicza'" in cmds(env)
+    assert "wir scope --set pl='Głodówka lecznicza'" in cmds(env) and "wir scope --set pl=Post" not in cmds(env)
     saved = pj.load(None)
     assert saved.langs == ["pl", "cs"] and saved.entries["pl"].status == MISSING
     assert any("Přerušovaný půst is a topic." in c for c in env["caveats"])
@@ -198,12 +199,22 @@ def test_ui_change_is_saved(fake):
     assert pj.load(None).ui == "uk"
 
 
-def test_many_languages_fit_the_output_limit(fake, capsys):
-    langs = "pl,cs,uk,de,fr,es,it,sk"
-    fake.links_ = {lang: "Přerušovaný půst" for lang in langs.split(",") if lang != "pl"}
-    fake.pages.update({(lang, "Přerušovaný půst"): ("Q1666254", FOUND) for lang in langs.split(",")})
-    env = scope.run_scope(scope_args("Q1666254", langs=langs, ui="uk"))
-    assert env["state"] == "input_required"
+def test_many_languages_fit_the_output_limit_without_truncation(fake, capsys, monkeypatch):
+    from wir_core.envelope import TRUNCATED_NOTE
+    titles = {"cs": "Přerušovaný půst", "uk": "Інтервальне голодування", "de": "Intermittierendes Fasten",
+              "fr": "Jeûne intermittent", "es": "Ayuno intermitente", "it": "Digiuno intermittente",
+              "sk": "Prerušovaný pôst"}  # live sitelinks of Q1666254; pl has none
+    langs = ["pl", *titles]
+    fake.links_ = titles
+    fake.pages.update({(lang, title): ("Q1666254", FOUND) for lang, title in titles.items()})
+    fake.cands = [Candidate("Q1666254", "Інтервальне голодування",
+                            "a diet that cycles between a period of fasting and non-fasting", 31, True)]
+    hits = [(f"Skróty i skrótowce używane w medycynie {i}", "długi fragment wyniku wyszukiwania " * 6)
+            for i in range(5)]
+    monkeypatch.setattr(fake, "search_in_wiki", lambda lang, text, limit=5: hits[:limit])
+    env = scope.run_scope(scope_args("інтервальне голодування", langs=",".join(langs), ui="uk"))
+    assert env["state"] == "input_required" and len(env["ask"]["options"]) == 7
     emit(env)
     out = capsys.readouterr().out
-    assert len(out.strip().encode()) <= 3000 and "--drop-lang pl" in out
+    assert len(out.strip().encode()) <= 3000 and TRUNCATED_NOTE not in out
+    assert len(json.loads(out)["say"]) == 1 + len(langs)
