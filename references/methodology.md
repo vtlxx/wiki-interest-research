@@ -61,6 +61,9 @@ differ in size by orders of magnitude, raw counts do not compare.
 A calendar of known Wikimedia data problems (bot traffic counted as people, data loss, backfills). Severity
 describes how reliable the data is today, not how big the problem was. Every incident inside the window is
 a caveat; a **high** one inside the 104 weeks of G lowers trust; medium and high ones are shaded on charts.
+The uncorrected November 2025 bot month hit languages unevenly, so it lowers trust only for a language whose
+monthly share in that month differs by more than 25% from the median of the two months on each side
+(`incident_shifts` in analysis.json).
 
 ## Trust (per language)
 Start at **high**. Any critical reason → **low**. Each minor rule lowers one level (a rule with two codes
@@ -77,7 +80,7 @@ counts once). A stand-in article caps trust at **medium**. At most 5 reasons are
 | `history_lt_24` | minor | 12–23 months of data |
 | `spiky` | minor | spike share 20–50% |
 | `verify_weakens` | minor | `wir verify`: spike-free G has no clear direction or a variant points the other way; or G has none and a variant has one |
-| `data_incident` | minor | a high-severity incident overlaps the 104 weeks of G |
+| `data_incident` | minor | a high-severity incident overlaps the 104 weeks of G (Nov 2025: only if the share moved > 25%) |
 | `redirect_coverage`, `dominant_redirect` | minor (one rule) | coverage < 90%, or one redirect > 30% |
 | `young_article`, `renamed` | minor (one rule) | created shortly before the window, or renamed inside it |
 | `project_shift` | minor | the whole edition changed by more than 25% in a year |

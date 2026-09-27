@@ -36,6 +36,7 @@ COMPACT_FACTS_FROM = 3    # languages; smaller facts keep the headline of every 
 COMPACT_FACT_KEYS = ("status", "share_per_m", "growth", "growth_ci", "verdict", "trust", "supply", "verify")
 MINIMAL_FACT_KEYS = ("status", "growth", "verdict", "trust", "verify")
 DAILY_CSV_YEARS = 5       # enough for verify's 36-month trend and the 104-week comparison
+INCIDENT_SHARE_SHIFT = 0.25   # a check_share incident counts when the share moved more than this in its months
 SKIPPABLE = {"NOT_CACHED", "NETWORK", "UPSTREAM_ERROR", "RATE_LIMITED"}   # optional steps degrade to a caveat
 ENDPOINTS = [
     "https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/{project}/all-access/user/{title}/daily/{start}/{end}",
@@ -165,7 +166,11 @@ def analyze_lang(p: pj.Project, raw: RawLang, window: dict) -> tuple[dict, dict[
     conflict = _trend_conflict(_growth_dict(growth), {**asdict(trend), "q": None} if trend else None)
     main_sel = raw.redirects.get(raw.main_title, {})
     renamed = sr.renamed_within(raw.moves, eff_start, end)
-    high = [i.id for i in inc.overlapping(raw.lang, cmp_start, end, {"high"})]
+    high_all = inc.overlapping(raw.lang, cmp_start, end, {"high"})
+    # an incident marked check_share lowers trust only where this language's share moved in those months
+    shifts = {i.id: st.share_shift(share_full, i.start, i.end) for i in high_all if i.check_share}
+    high = [i.id for i in high_all
+            if not i.check_share or shifts[i.id] is None or abs(shifts[i.id]) > INCIDENT_SHARE_SHIFT]
     trust_inputs = TrustInputs(
         median_monthly_views=float(m_topic_win.median()) if len(m_topic_win) else 0.0,
         history_months=sr.history_months(topic, raw.created, end), spike_share=spike_sh,
@@ -197,7 +202,8 @@ def analyze_lang(p: pj.Project, raw: RawLang, window: dict) -> tuple[dict, dict[
             {"start": e.start.isoformat(), "end": e.end.isoformat(), "peak": e.peak.isoformat(),
              "extra_views": e.extra_views, "peak_views": e.peak_views, "edits": None, "geo": None}
             for e in episodes[:5]]},
-        "incidents": [i.id for i in inc.overlapping(raw.lang, eff_start, end)], "incidents_high": high,
+        "incidents": [i.id for i in inc.overlapping(raw.lang, eff_start, end)], "incidents_high": [i.id for i in high_all],
+        "incident_shifts": shifts,
         "countries": [], "supply": "normal", "trust_inputs": asdict(trust_inputs),
         "trust": {"level": trust.level, "reasons": [r.code for r in trust.reasons]}, "verify": None,
         "monthly": [{"month": ts.strftime("%Y-%m"), "views": int(m_topic_win[ts]), "project_views": int(m_proj_win[ts]),

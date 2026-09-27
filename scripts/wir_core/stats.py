@@ -255,6 +255,19 @@ class Seasonality:
     profile: list[float]
 
 
+def share_shift(monthly_share: pd.Series, start: date, end: date, neighbours: int = 2) -> float | None:
+    """Relative change of the share in the months of [start, end] against the median of up to `neighbours`
+    months on each side (e.g. +0.5 = 50% above its surroundings). None without those months or a baseline."""
+    s = monthly_share.dropna()
+    first, last = pd.Timestamp(start.replace(day=1)), pd.Timestamp(end)
+    inside = s[(s.index >= first) & (s.index <= last)]
+    around = pd.concat([s[s.index < first].tail(neighbours), s[s.index > last].head(neighbours)])
+    base = float(around.median()) if len(around) else 0.0
+    if inside.empty or base <= 0:
+        return None
+    return float(inside.mean()) / base - 1
+
+
 def seasonality(monthly_share: pd.Series) -> Seasonality | None:
     s = monthly_share.dropna()
     if len(s) < 36:

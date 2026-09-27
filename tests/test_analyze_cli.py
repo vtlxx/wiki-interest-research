@@ -28,6 +28,9 @@ def test_fasting_cs_end_to_end(cli_fixtures, run_cli):
     a = load_analysis(env)
     assert a["schema"] == 1 and a["langs"]["cs"]["trust"]["level"] in ("high", "medium", "low")
     assert a["langs"]["cs"]["monthly"] and a["provenance"]["params"] == {"agent": "user", "access": "all-access"}
+    # the Nov-2025 bot month is checked per language: it lowers trust only when cs's share moved > 25% then
+    shift = a["langs"]["cs"]["incident_shifts"]["bots_2025_11"]
+    assert ("data_incident" in a["langs"]["cs"]["trust"]["reasons"]) == (abs(shift) > 0.25)
     proj = Path(env["project"])
     for name in ("series_daily.csv", "series_monthly.csv", "notes.template.md"):
         assert (proj / name).exists()

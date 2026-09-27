@@ -20,3 +20,7 @@ def test_overlap_severity_filter_and_none():
     high = incidents.overlapping("pl", date(2024, 9, 1), date(2026, 8, 31), severities={"high"})
     assert [i.id for i in high] == ["bots_2025_11"]
     assert incidents.overlapping("pl", date(2023, 1, 1), date(2023, 12, 31)) == []
+
+
+def test_only_the_uncorrected_bot_month_is_checked_per_language():
+    assert [i.id for i in incidents.load() if i.check_share] == ["bots_2025_11"]

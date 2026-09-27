@@ -229,3 +229,28 @@ def test_seasonality_weak_for_noise_and_none_when_short():
 def test_bh_adjust():
     q = st.bh_adjust([0.01, 0.04, 0.03, 0.2, None])
     assert q[:4] == pytest.approx([0.04, 0.16 / 3, 0.16 / 3, 0.2]) and q[4] is None
+
+
+# ---- share shift in an incident month -------------------------------------------------------
+def monthly_share(values, first="2025-07-01"):
+    return pd.Series(np.asarray(values, dtype=float), index=pd.date_range(first, periods=len(values), freq="MS"))
+
+
+NOV = (date(2025, 11, 1), date(2025, 11, 30))
+
+
+def test_share_shift_against_the_median_of_two_months_on_each_side():
+    # Jul Aug Sep Oct [Nov] Dec Jan Feb: neighbours Sep, Oct, Dec, Jan -> median 100
+    assert st.share_shift(monthly_share([10, 10, 90, 100, 150, 100, 110, 10]), *NOV) == pytest.approx(0.5)
+    assert st.share_shift(monthly_share([10, 10, 90, 100, 60, 100, 110, 10]), *NOV) == pytest.approx(-0.4)
+
+
+def test_share_shift_uses_the_months_that_exist():
+    assert st.share_shift(monthly_share([100, 100, 100, 100, 120]), *NOV) == pytest.approx(0.2)   # ends in Nov
+    assert st.share_shift(monthly_share([100, np.nan, 100, 100, 120]), *NOV) == pytest.approx(0.2)
+
+
+def test_share_shift_is_none_without_the_month_or_a_baseline():
+    assert st.share_shift(monthly_share([100, 100, 100]), *NOV) is None                  # Jul-Sep only
+    assert st.share_shift(monthly_share([150], first="2025-11-01"), *NOV) is None       # no neighbours
+    assert st.share_shift(monthly_share([0, 0, 0, 0, 5, 0, 0]), *NOV) is None             # zero baseline

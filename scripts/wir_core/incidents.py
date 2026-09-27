@@ -20,13 +20,15 @@ class Incident:
     note_en: str
     note_uk: str
     source: str | None
+    check_share: bool = False   # counts for trust only where the language's share moved
 
 
 @lru_cache(maxsize=1)
 def _load_cached() -> tuple[Incident, ...]:
     raw = json.loads((assets_dir() / "incidents.json").read_text("utf-8"))
     return tuple(Incident(r["id"], date.fromisoformat(r["start"]), date.fromisoformat(r["end"]), list(r["projects"]),
-                          r["type"], r["severity"], r["note_en"], r["note_uk"], r.get("source")) for r in raw)
+                          r["type"], r["severity"], r["note_en"], r["note_uk"], r.get("source"),
+                          bool(r.get("check_share"))) for r in raw)
 
 
 def load() -> list[Incident]:

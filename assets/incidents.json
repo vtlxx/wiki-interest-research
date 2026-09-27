@@ -25,7 +25,7 @@
    "note_uk": "Втрачено близько 2% переглядів із Європи та Азії.",
    "source": "https://wikitech.wikimedia.org/wiki/Data_Platform/Data_Lake/Data_Issues"},
   {"id": "bots_2025_11", "start": "2025-11-01", "end": "2025-11-30", "projects": ["*"],
-   "type": "bot_inflation", "severity": "high",
+   "type": "bot_inflation", "severity": "high", "check_share": true,
    "note_en": "Undetected bots inflated 'human' pageviews, most strongly in smaller languages; this month was never corrected.",
    "note_uk": "Неперехоплені боти завищили «людські» перегляди, найсильніше в менших мовах; цей місяць так і не виправлено.",
    "source": "https://wikitech.wikimedia.org/wiki/Data_Platform/Data_Lake/Data_Issues/2026-06-10_Nov_2025_spike_in_bot_traffic"},
