@@ -124,4 +124,4 @@ def summarize(analysis: dict, ui: str) -> dict:
         general.append(t(ui, "caveat.geo_skipped"))
     caveats += incident_caveats + lang_caveats + general
     return {"say": say, "facts": facts, "caveats": caveats,
-            "core": {"say": len(headlines) + len(ranking_line), "caveats": 2}}
+            "core": {"say": len(headlines) + len(ranking_line), "headlines": len(headlines), "caveats": 2}}

@@ -68,6 +68,11 @@ def test_multi_language_ranking(cli_fixtures, run_cli):
     for name in ("Polish:", "Czech:", "German:", "Ukrainian:"):             # every headline survives the 3 KB limit
         assert any(s.startswith(name) for s in env["say"])
     assert env["caveats"][:2] == a["summary"]["caveats"][:2]
+    code, env = run_cli("verify")
+    assert code == 0 and all(f["verify"] for f in env["facts"].values())
+    for name in ("Polish:", "Czech:", "German:", "Ukrainian:"):
+        assert any(s.startswith(name) for s in env["say"])
+    assert env["caveats"][:2] == a["summary"]["caveats"][:2]
 
 
 def test_analyze_without_usable_langs(cli_fixtures, run_cli):

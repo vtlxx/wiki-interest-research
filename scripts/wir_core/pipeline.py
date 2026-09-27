@@ -17,7 +17,7 @@ from . import project as pj
 from . import series as sr
 from . import stats as st
 from .config import today_utc
-from .envelope import fit, make
+from .envelope import fit, fits, make
 from .errors import EXIT_NETWORK, EXIT_NODATA, EXIT_USAGE, WirError
 from .geo import spike_breakdown, top_countries
 from .i18n import lang_name, t
@@ -33,7 +33,10 @@ SCHEMA = 1
 TIME_BUDGET_S = 90.0
 MAX_GEO_EPISODES = 3      # spec 5.6: at most 6 daily DP files per run; one file per episode day
 COMPACT_FACTS_FROM = 3    # languages; smaller facts keep the headline of every language inside ~3 KB
+COMPACT_FACT_KEYS = ("status", "share_per_m", "growth", "growth_ci", "verdict", "trust", "supply", "verify")
+MINIMAL_FACT_KEYS = ("status", "growth", "verdict", "trust", "verify")
 DAILY_CSV_YEARS = 5       # enough for verify's 36-month trend and the 104-week comparison
+SKIPPABLE = {"NOT_CACHED", "NETWORK", "UPSTREAM_ERROR", "RATE_LIMITED"}   # optional steps degrade to a caveat
 ENDPOINTS = [
     "https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/{project}/all-access/user/{title}/daily/{start}/{end}",
     "https://wikimedia.org/api/rest_v1/metrics/pageviews/aggregate/{project}/all-access/user/daily/{start}/{end}",
@@ -112,6 +115,20 @@ def _growth_dict(g: st.Growth | None) -> dict | None:
     return asdict(g) if g else None
 
 
+def _trend_conflict(growth: dict | None, trend: dict | None) -> bool:
+    """A significant trend (BH q-value when set, else p < 0.1) pointing against the yearly verdict."""
+    if not growth or not trend:
+        return False
+    p = trend["q"] if trend.get("q") is not None else trend["p"]
+    return p < 0.1 and ((growth["verdict"] == "growing" and trend["pct_per_year"] < 0)
+                        or (growth["verdict"] == "declining" and trend["pct_per_year"] > 0))
+
+
+def _reassess(res: dict) -> None:
+    trust = assess(TrustInputs(**res["trust_inputs"]))
+    res["trust"] = {"level": trust.level, "reasons": [r.code for r in trust.reasons]}
+
+
 def _first_day(created: date | None, topic: pd.Series) -> date | None:
     """Article creation date, or the first day with views when the creation date is unknown."""
     if created:
@@ -145,8 +162,7 @@ def analyze_lang(p: pj.Project, raw: RawLang, window: dict) -> tuple[dict, dict[
     spike_sh = st.spike_share(episodes, topic, eff_start, end)
     flips = bool(growth and growth_ds and growth.verdict in ("growing", "declining")
                  and growth_ds.verdict in ("growing", "declining") and growth.verdict != growth_ds.verdict)
-    conflict = bool(growth and trend and trend.p < 0.1 and (
-        (growth.verdict == "growing" and trend.pct_per_year < 0) or (growth.verdict == "declining" and trend.pct_per_year > 0)))
+    conflict = _trend_conflict(_growth_dict(growth), {**asdict(trend), "q": None} if trend else None)
     main_sel = raw.redirects.get(raw.main_title, {})
     renamed = sr.renamed_within(raw.moves, eff_start, end)
     high = [i.id for i in inc.overlapping(raw.lang, cmp_start, end, {"high"})]
@@ -205,7 +221,7 @@ def add_countries(provider, results: dict, window_end: date) -> bool:
             months = [provider.countries(lang, d.year, d.month)
                       for d in (sr.add_months(last_month, -k) for k in range(12))]
         except WirError as err:
-            if err.code != "NOT_CACHED":
+            if err.code not in SKIPPABLE:
                 raise
             skipped = True
             continue
@@ -226,7 +242,13 @@ def add_spike_geo(provider, results: dict) -> bool:
         for lang, i in picked:
             res, ep = results[lang], results[lang]["spikes"]["episodes"][i]
             peak = date.fromisoformat(ep["peak"])
-            rows = provider.spike_geo(peak, [res["qid"]])[res["qid"]]
+            try:
+                rows = provider.spike_geo(peak, [res["qid"]])[res["qid"]]
+            except WirError as err:
+                if err.code != "NOT_PUBLISHED":
+                    raise
+                ep["geo"] = {"countries": [], "other_projects": [], "unpublished": True}
+                continue
             own = provider.aqs_project(lang)
             breakdown = spike_breakdown(rows, own)
             if breakdown:
@@ -237,8 +259,10 @@ def add_spike_geo(provider, results: dict) -> bool:
             else:
                 ep["geo"] = {"countries": [], "other_projects": [], "below_threshold": True}
             ep["edits"] = provider.edits_on(lang, res["article"], peak)
+    except BudgetExceeded:
+        return True   # the ~19 MB daily files are optional context: never let them cost the whole analysis
     except WirError as err:
-        if err.code != "NOT_CACHED":
+        if err.code not in SKIPPABLE:
             raise
         return True
     return False
@@ -262,6 +286,12 @@ def add_supply_rank_bh(p: pj.Project, results: dict) -> list[dict]:
         for lang, q in zip(usable, qs):
             if results[lang]["trend"]:
                 results[lang]["trend"]["q"] = q
+    for lang in usable:  # spec 6.3: trend significance after the BH correction decides the trend conflict
+        res = results[lang]
+        conflict = _trend_conflict(res["growth"], res["trend"])
+        if conflict != res["trust_inputs"]["trend_conflict"]:
+            res["trust_inputs"]["trend_conflict"] = conflict
+            _reassess(res)
     if len(usable) < 2:
         return []
     rows = [{"lang": lang, "level": results[lang]["share_per_m"],
@@ -308,6 +338,37 @@ def _render_charts(analysis: dict, p: pj.Project) -> dict[str, str]:
     return {name: pj.rel(path) for name, path in render_all(analysis, p.dir / "charts", p.ui).items()}
 
 
+def compose_envelope(ui: str, summary: dict, extra_say: list[str], *, project: str, next_: list, files: dict) -> dict:
+    """The ~3 KB answer: every headline, the ranking and the two core caveats first; facts as detailed as still
+    fits; then optional lines (verify results, details, other caveats) in priority order; one note for the rest."""
+    note = t(ui, "caveat.more")
+    core, say, caveats, facts = summary["core"], summary["say"], summary["caveats"], summary["facts"]
+    heads, ranking = say[:core["headlines"]], say[core["headlines"]:core["say"]]
+
+    def pick(keys: tuple[str, ...]) -> dict:
+        return {lang: {k: v for k, v in f.items() if k in keys} for lang, f in facts.items()}
+
+    choices = ([facts] if len(facts) < COMPACT_FACTS_FROM else []) + [
+        pick(COMPACT_FACT_KEYS), pick(MINIMAL_FACT_KEYS), {"see": files.get("data", "analysis.json")}]
+    for choice in choices:
+        env = make("ready", project=project, say=heads + ranking, facts=choice, caveats=caveats[:core["caveats"]],
+                   next_=next_, files=files)
+        if fits(env, note):
+            break
+    dropped = False
+    while not fits(env, note) and len(heads) > 1:   # only with very many languages: keep ranking and caveats
+        heads, dropped = heads[:-1], True
+        env["say"] = heads + ranking
+    rest_say = [("say", line) for line in say[core["say"]:]]
+    rest_caveats = [("caveats", line) for line in caveats[core["caveats"]:]]
+    optional = [("say", line) for line in extra_say] + [
+        item for pair in zip_longest(rest_say, rest_caveats) for item in pair if item]
+    env = fit(env, optional, note)
+    if dropped and note not in env["caveats"]:
+        env["caveats"].append(note)
+    return env
+
+
 def _finish(p: pj.Project, analysis: dict, extra_say: list[str] | None = None) -> dict:
     ui = p.ui
     analysis["summary"] = summarize(analysis, ui)
@@ -321,16 +382,7 @@ def _finish(p: pj.Project, analysis: dict, extra_say: list[str] | None = None) -
         nxt.append({"why": t(ui, "next.verify"), "cmd": "wir verify"})
     nxt.append({"why": t(ui, "next.publish", template="notes.template.md"), "cmd": "wir publish"})
     files = {"data": pj.rel(p.dir / "analysis.json"), "notes_template": pj.rel(p.dir / "notes.template.md"), **charts}
-    facts = s["facts"]
-    if len(facts) >= COMPACT_FACTS_FROM:  # countries and season are in the say lines and analysis.json
-        facts = {lang: {k: v for k, v in f.items() if k not in ("countries", "season")} for lang, f in facts.items()}
-    core_say, core_caveats = s["core"]["say"], s["core"]["caveats"]
-    env = make("ready", project=pj.rel(p.dir), say=(extra_say or []) + s["say"][:core_say], facts=facts,
-               caveats=s["caveats"][:core_caveats], next_=nxt, files=files)
-    rest_say = [("say", line) for line in s["say"][core_say:]]
-    rest_caveats = [("caveats", line) for line in s["caveats"][core_caveats:]]
-    optional = [item for pair in zip_longest(rest_say, rest_caveats) for item in pair if item]
-    return fit(env, optional, t(ui, "caveat.more"))
+    return compose_envelope(ui, s, extra_say or [], project=pj.rel(p.dir), next_=nxt, files=files)
 
 
 def _budget_used_up(p: pj.Project, err: BudgetExceeded, done: int, total: int) -> dict:
@@ -343,7 +395,8 @@ def _budget_used_up(p: pj.Project, err: BudgetExceeded, done: int, total: int) -
         raise WirError("UPSTREAM_ERROR", f"Wikimedia kept answering HTTP {err.last_status} within the time budget",
                        fix="Run wir analyze again in a few minutes (downloaded data is cached).",
                        exit_code=EXIT_NETWORK)
-    return make("ready", project=pj.rel(p.dir), say=[t(p.ui, "analyze.partial", done=done, total=total)],
+    say = t(p.ui, "analyze.almost") if done == total else t(p.ui, "analyze.partial", done=done, total=total)
+    return make("ready", project=pj.rel(p.dir), say=[say],
                 next_=[{"why": t(p.ui, "next.continue"), "cmd": "wir analyze"}])
 
 
@@ -390,7 +443,9 @@ def run_analyze(args) -> dict:
                                                "period_months", "date_from", "date_to")},
         "window": window, "weights": p.weights, "langs": {lang: results[lang] for lang in p.langs},
         "ranking": ranking, "geo_skipped": geo_skipped, "countries_skipped": countries_skipped,
-        "provenance": {"fetched_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "source": p.source,
+        # offline runs reuse earlier downloads whose time is unknown here; data_through tells how fresh they are
+        "provenance": {"fetched_at": None if args.offline else datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                       "data_through": window["last_day"], "source": p.source,
                        "offline": bool(args.offline), "requests": requests,
                        "params": {"agent": "user", "access": "all-access"}, "endpoints": ENDPOINTS},
     }
@@ -407,8 +462,9 @@ def direction_of_growth(g: st.Growth | None) -> int:
     return {"growing": 1, "declining": -1}.get(g.verdict, 0)
 
 
-def direction_of_trend(tr: st.Trend | None) -> int:
-    if tr is None or tr.p >= 0.1:
+def direction_of_trend(tr: st.Trend | None, q: float | None = None) -> int:
+    """+1/-1 for a significant trend (the BH q-value when given, else p < 0.1), 0 otherwise."""
+    if tr is None or (q if q is not None else tr.p) >= 0.1:
         return 0
     return 1 if tr.pct_per_year > 0 else -1
 
@@ -440,7 +496,7 @@ def run_verify(args) -> dict:
     daily = _read_daily(p)
     analysis = json.loads((p.dir / "analysis.json").read_text("utf-8"))
     end = date.fromisoformat(analysis["window"]["end"])
-    extra_say = []
+    variants: dict[str, dict] = {}
     for lang, res in analysis["langs"].items():
         if not res.get("usable") or lang not in daily:
             continue
@@ -448,23 +504,36 @@ def run_verify(args) -> dict:
         topic, proj, despiked = df["views"].astype(float), df["project_views"].astype(float), df["despiked"].astype(float)
         first = _first_day(date.fromisoformat(res["created"]) if res.get("created") else None, topic)
         seasonal = bool(res.get("seasonality") and res["seasonality"]["strength"] >= 0.3)
-        g_ds = st.growth_yoy(despiked, proj, end, first_day=first)
-        g_half = st.growth_yoy(topic, proj, end, weeks=26, lag_weeks=52, first_day=first)
         m_start = sr.first_full_month(max(topic.index[0].date(), first or topic.index[0].date()))
         share_m = sr.share(sr.monthly(topic, m_start, end), sr.monthly(proj, m_start, end))
-        tr24 = st.trend(share_m.tail(24), seasonal=seasonal)
-        tr36 = st.trend(share_m.tail(36), seasonal=seasonal) if len(share_m) >= 36 else None
+        variants[lang] = {
+            "despiked": st.growth_yoy(despiked, proj, end, first_day=first),
+            "half_year": st.growth_yoy(topic, proj, end, weeks=26, lag_weeks=52, first_day=first),
+            "trend_24m": st.trend(share_m.tail(24), seasonal=seasonal),
+            "trend_36m": st.trend(share_m.tail(36), seasonal=seasonal) if len(share_m) >= 36 else None}
+    # spec 6.3: with >=4 languages the trend variants are judged by BH q-values, like the main trends
+    qvals: dict[tuple[str, str], float | None] = {}
+    if len(variants) >= 4:
+        for key in ("trend_24m", "trend_36m"):
+            langs = list(variants)
+            qs = st.bh_adjust([variants[lang][key].p if variants[lang][key] else None for lang in langs])
+            qvals.update({(lang, key): q for lang, q in zip(langs, qs)})
+    extra_say = []
+    for lang, v in variants.items():
+        res = analysis["langs"][lang]
         main_dir = {"growing": 1, "declining": -1}.get((res.get("growth") or {}).get("verdict"), 0)
-        dirs = [direction_of_growth(g_ds), direction_of_growth(g_half), direction_of_trend(tr24)]
-        if tr36:
-            dirs.append(direction_of_trend(tr36))
+        dirs = [direction_of_growth(v["despiked"]), direction_of_growth(v["half_year"]),
+                direction_of_trend(v["trend_24m"], qvals.get((lang, "trend_24m")))]
+        if v["trend_36m"]:
+            dirs.append(direction_of_trend(v["trend_36m"], qvals.get((lang, "trend_36m"))))
         outcome = verify_outcome(main_dir, dirs)
         res["verify"] = {"outcome": outcome, "variants": {
-            "despiked": _growth_dict(g_ds), "half_year": _growth_dict(g_half),
-            "trend_24m": asdict(tr24) if tr24 else None, "trend_36m": asdict(tr36) if tr36 else None}}
-        trust = assess(TrustInputs(**{**res["trust_inputs"], "verify_outcome": outcome}))
-        res["trust"] = {"level": trust.level, "reasons": [r.code for r in trust.reasons]}
+            "despiked": _growth_dict(v["despiked"]), "half_year": _growth_dict(v["half_year"]),
+            "trend_24m": {**asdict(v["trend_24m"]), "q": qvals.get((lang, "trend_24m"))} if v["trend_24m"] else None,
+            "trend_36m": {**asdict(v["trend_36m"]), "q": qvals.get((lang, "trend_36m"))} if v["trend_36m"] else None}}
+        res["trust_inputs"]["verify_outcome"] = outcome   # kept, so later re-assessments include it
+        _reassess(res)
         extra_say.append(t(p.ui, "verify.lang", lang=lang_name(lang, p.ui), outcome=t(p.ui, f"verify.{outcome}"),
-                           trust=t(p.ui, f"trust.{trust.level}")))
+                           trust=t(p.ui, f"trust.{res['trust']['level']}")))
     analysis["ranking"] = add_supply_rank_bh(p, analysis["langs"])
     return _finish(p, analysis, extra_say)

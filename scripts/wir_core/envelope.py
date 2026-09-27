@@ -50,14 +50,18 @@ def _clip(value: Any, limit: int) -> Any:
     return value
 
 
+def fits(env: dict, note: str) -> bool:
+    """True when `env` plus one more caveat `note` stays below the size at which _shrink starts cutting."""
+    return _size(env) <= MAX_BYTES - 120 - len(_dumps(note).encode()) - 1
+
+
 def fit(env: dict, optional: list[tuple[str, str]], note: str) -> dict:
     """Append optional (key, line) items in priority order while the output stays within the size limit;
     items that do not fit are skipped and replaced by one `note` (so _shrink never has to cut blindly)."""
-    limit = MAX_BYTES - 120 - len(_dumps(note).encode()) - 1
     skipped = False
     for key, value in optional:
         env.setdefault(key, []).append(value)
-        if _size(env) > limit:
+        if not fits(env, note):
             env[key].pop()
             skipped = True
     if skipped:

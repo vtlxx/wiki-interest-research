@@ -77,7 +77,7 @@ def test_headlines_first_reasons_grouped_and_global_incidents_unprefixed():
     out = summarize(a, "en")
     say, cav = out["say"], out["caveats"]
     assert say[0].startswith("Czech: 5.12") and say[1].startswith("Polish: 2.00") and say[2].startswith("Audiences")
-    assert out["core"] == {"say": 3, "caveats": 2}
+    assert out["core"] == {"say": 3, "headlines": 2, "caveats": 2}
     assert sum("why this trust level" in s for s in say) == 1
     assert any(s.startswith("Czech, Polish — why this trust level") for s in say)
     bots = [c for c in cav if "Undetected bots" in c]
