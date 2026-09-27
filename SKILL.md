@@ -54,7 +54,7 @@ ask the user; never guess.
       in the user's language. Keep the headings. Use only numbers from `say`/`facts`.
    c. `wir publish`. On `NUMBERS_NOT_IN_DATA`: replace the listed numbers with values from `say`/`facts`, run again.
       On `SCRIPT_UNSUPPORTED`: rewrite notes.md in English and run `wir publish --ui en`.
-6. Answer in chat with the template below.
+6. Answer in chat with the template below — also after a report: notes.md does not replace the answer.
 
 ## Request → flags
 | User says | Flag |
@@ -105,7 +105,7 @@ the `<!-- facts:` block at the end of the `files.notes_template` file.
 - Take article titles from the user or from `ask.options`. If you add a title yourself (`--set` or
   `--add-article`), quote the first sentence the tool returns and list every added article in the Data part.
 - Never compare raw view counts across languages; compare share per million and change.
-- Say "interest", never "demand" or "people will pay".
+- Say "interest" («інтерес»), never "demand" («попит») or "people will pay" — also in notes.md.
 - Never skip `ask`: the user decides.
 - A missing article is a finding (content gap), not zero interest: tell the user about every dropped language.
 - A language is not a country: speak about countries only from `facts.countries` and `say`.
