@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 
 import numpy as np
 import pandas as pd
@@ -68,6 +68,31 @@ def test_simple_yoy():
     assert st.simple_yoy(s, END) == pytest.approx(0.2)
     assert st.simple_yoy(daily(np.full(100, 1.0)), END) is None
 
+
+
+def test_growth_young_article_is_none_when_the_compared_span_predates_it():
+    n = 7 * 104
+    values = np.zeros(n)
+    values[-600:] = 100.0                                        # created ~20 months ago, zero-filled before
+    topic, proj = daily(values), project(n)
+    first_day = END - timedelta(days=599)
+    assert st.growth_yoy(topic, proj, END).g > 0.3              # the inflated G this guard prevents
+    assert st.growth_yoy(topic, proj, END, first_day=first_day) is None
+    assert st.simple_yoy(topic, END, first_day=first_day) is None
+
+
+def test_growth_first_day_at_or_before_span_start_keeps_the_result():
+    n = 7 * 104
+    topic, proj = daily(np.full(n, 100.0)), project(n)
+    span_start = END - timedelta(days=n - 1)
+    for first in (span_start, date(2015, 7, 1)):
+        assert st.growth_yoy(topic, proj, END, first_day=first) == st.growth_yoy(topic, proj, END)
+        assert st.simple_yoy(topic, END, first_day=first) == st.simple_yoy(topic, END)
+    half = st.growth_yoy(daily(np.full(7 * 78, 100.0)), project(7 * 78), END, weeks=26, lag_weeks=52,
+                         first_day=END - timedelta(days=7 * 78 - 1))
+    assert half is not None
+    assert st.growth_yoy(daily(np.full(7 * 78, 100.0)), project(7 * 78), END, weeks=26, lag_weeks=52,
+                         first_day=END - timedelta(days=7 * 78 - 2)) is None
 
 # ---- trend / Mann-Kendall -------------------------------------------------------------------
 def monthly(values, end="2026-08-01"):

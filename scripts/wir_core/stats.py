@@ -42,9 +42,18 @@ def _weekly(series: pd.Series, end: date, n_weeks: int) -> np.ndarray | None:
     return part.reshape(n_weeks, 7).sum(axis=1)
 
 
+def _predates(first_day: date | None, end: date, n_weeks: int) -> bool:
+    """True when the n_weeks span ending at `end` starts before `first_day` (the article did not exist yet,
+    so its zero-filled early weeks would inflate the growth)."""
+    return first_day is not None and end - timedelta(days=7 * n_weeks - 1) < first_day
+
+
 def growth_yoy(topic_daily: pd.Series, project_daily: pd.Series, end: date, *, weeks: int = 52,
-               lag_weeks: int = 52, block: int = 4, n_boot: int = 2000, seed: int = SEED) -> Growth | None:
+               lag_weeks: int = 52, block: int = 4, n_boot: int = 2000, seed: int = SEED,
+               first_day: date | None = None) -> Growth | None:
     total = weeks + lag_weeks
+    if _predates(first_day, end, total):
+        return None
     t, p = _weekly(topic_daily, end, total), _weekly(project_daily, end, total)
     if t is None or p is None or np.any(p <= 0):
         return None
@@ -64,7 +73,9 @@ def growth_yoy(topic_daily: pd.Series, project_daily: pd.Series, end: date, *, w
     return Growth(g, float(lo), float(hi), classify(g, float(lo), float(hi)), weeks)
 
 
-def simple_yoy(daily: pd.Series, end: date) -> float | None:
+def simple_yoy(daily: pd.Series, end: date, *, first_day: date | None = None) -> float | None:
+    if _predates(first_day, end, 104):
+        return None
     w = _weekly(daily, end, 104)
     if w is None or w[:52].sum() <= 0:
         return None
