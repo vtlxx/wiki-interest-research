@@ -62,3 +62,38 @@ def test_trust_reasons_are_kept_before_verify_and_detail_lines():
         assert first_reason in env["say"]
         if extra[0] in env["say"]:
             assert env["say"].index(first_reason) < env["say"].index(extra[0])
+
+
+def test_a_long_grouped_reason_line_is_kept_even_when_facts_must_shrink():
+    s = summary(4)
+    long_reason = ("мова0, мова1, мова2, мова3 — чому така довіра: висновок слабшає за альтернативних розрахунків; "
+                   "на порівнювані роки припадає відома проблема з даними Wikimedia.")
+    s["say"] = s["say"][:5] + [long_reason] + s["say"][9:]
+    s["core"]["reasons"] = 1
+    s["caveats"][:2] = [  # the real core caveats are long sentences
+        "Перегляди показують цікавість, а не готовність платити: сприймайте результати як напрями для подальшої перевірки.",
+        "Мовний розділ — не країна: його читачі живуть у різних країнах, а одна країна читає кілька розділів."]
+    extra = [f"мова{i}: перевірка стійкості — висновок слабшає; довіра тепер низька." for i in range(4)]
+    files = {"data": "/Users/someone/projects/wiki-interest-output/2026-09-27-q1860/analysis.json",
+             "notes_template": "/Users/someone/projects/wiki-interest-output/2026-09-27-q1860/notes.template.md",
+             "charts": "/Users/someone/projects/wiki-interest-output/2026-09-27-q1860/charts"}
+    text = emitted(compose_envelope("uk", s, extra, project="p", next_=[], files=files))
+    env = json.loads(text)
+    assert len(text.encode()) <= envelope.MAX_BYTES and envelope.TRUNCATED_NOTE not in text
+    assert all(any(line.startswith(f"мова{i}: 43,0") for line in env["say"]) for i in range(4))
+    assert long_reason in env["say"]
+
+
+def test_real_four_language_verify_keeps_the_trust_reason_line():
+    from pathlib import Path
+    case = json.loads((Path(__file__).parent / "fixtures" / "compose" / "q1860_after_verify.json").read_text("utf-8"))
+    s = case["summary"]
+    base = "wiki-interest-output/2026-09-27-q1860"
+    files = {"data": f"{base}/analysis.json", "notes_template": f"{base}/notes.template.md", "charts": f"{base}/charts"}
+    nxt = [{"why": "Зібрати односторінковий PDF-звіт", "cmd": "wir publish"}]
+    text = emitted(compose_envelope("uk", s, case["extra_say"], project=base, next_=nxt, files=files))
+    env = json.loads(text)
+    reason = s["say"][s["core"]["say"]]
+    assert "чому така довіра" in reason and reason in env["say"]
+    assert len(text.encode()) <= envelope.MAX_BYTES and envelope.TRUNCATED_NOTE not in text
+    assert all(line in env["say"] for line in s["say"][:s["core"]["say"]])

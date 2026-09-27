@@ -339,12 +339,14 @@ def _render_charts(analysis: dict, p: pj.Project) -> dict[str, str]:
 
 
 def compose_envelope(ui: str, summary: dict, extra_say: list[str], *, project: str, next_: list, files: dict) -> dict:
-    """The ~3 KB answer: every headline, the ranking and the two core caveats first; facts as detailed as still
-    fits; then optional lines (trust reasons, verify results, details, other caveats) in priority order; one note
-    for the rest."""
+    """The ~3 KB answer: every headline, the ranking, the trust-reason lines and the two core caveats first; facts as
+    detailed as still fits; then optional lines (verify results, details, other caveats) in priority order; one
+    note for the rest."""
     note = t(ui, "caveat.more")
     core, say, caveats, facts = summary["core"], summary["say"], summary["caveats"], summary["facts"]
     heads, ranking = say[:core["headlines"]], say[core["headlines"]:core["say"]]
+    n_reasons = core.get("reasons", 0)   # "why this trust level": the agent quotes it, so facts shrink first
+    reasons = say[core["say"]:core["say"] + n_reasons]
 
     def pick(keys: tuple[str, ...]) -> dict:
         return {lang: {k: v for k, v in f.items() if k in keys} for lang, f in facts.items()}
@@ -352,19 +354,21 @@ def compose_envelope(ui: str, summary: dict, extra_say: list[str], *, project: s
     choices = ([facts] if len(facts) < COMPACT_FACTS_FROM else []) + [
         pick(COMPACT_FACT_KEYS), pick(MINIMAL_FACT_KEYS), {"see": files.get("data", "analysis.json")}]
     for choice in choices:
-        env = make("ready", project=project, say=heads + ranking, facts=choice, caveats=caveats[:core["caveats"]],
-                   next_=next_, files=files)
+        env = make("ready", project=project, say=heads + ranking + reasons, facts=choice,
+                   caveats=caveats[:core["caveats"]], next_=next_, files=files)
         if fits(env, note):
             break
+    late_reasons: list[str] = []
+    if not fits(env, note) and reasons:   # very many languages: headlines outrank reasons
+        late_reasons, reasons = reasons, []
+        env["say"] = heads + ranking
     dropped = False
     while not fits(env, note) and len(heads) > 1:   # only with very many languages: keep ranking and caveats
         heads, dropped = heads[:-1], True
         env["say"] = heads + ranking
-    n_reasons = core.get("reasons", 0)   # "why this trust level" lines: the agent quotes them, so they come first
-    reasons = [("say", line) for line in say[core["say"]:core["say"] + n_reasons]]
     rest_say = [("say", line) for line in say[core["say"] + n_reasons:]]
     rest_caveats = [("caveats", line) for line in caveats[core["caveats"]:]]
-    optional = reasons + [("say", line) for line in extra_say] + [
+    optional = [("say", line) for line in late_reasons + extra_say] + [
         item for pair in zip_longest(rest_say, rest_caveats) for item in pair if item]
     env = fit(env, optional, note)
     if dropped and note not in env["caveats"]:
@@ -384,7 +388,9 @@ def _finish(p: pj.Project, analysis: dict, extra_say: list[str] | None = None) -
            for r in analysis["langs"].values()):
         nxt.append({"why": t(ui, "next.verify"), "cmd": "wir verify"})
     nxt.append({"why": t(ui, "next.publish", template="notes.template.md"), "cmd": "wir publish"})
-    files = {"data": pj.rel(p.dir / "analysis.json"), "notes_template": pj.rel(p.dir / "notes.template.md"), **charts}
+    files = {"data": pj.rel(p.dir / "analysis.json"), "notes_template": pj.rel(p.dir / "notes.template.md")}
+    if charts:  # one folder instead of five PNG paths: the bytes go to the answer lines
+        files["charts"] = pj.rel(p.dir / "charts")
     return compose_envelope(ui, s, extra_say or [], project=pj.rel(p.dir), next_=nxt, files=files)
 
 
