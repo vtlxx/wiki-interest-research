@@ -155,7 +155,7 @@ def _save_edited(p: pj.Project, *, stale: bool = True) -> None:
 def _create(args, provider, ui: str, notes: list[str]):
     if not args.langs:
         raise WirError("MISSING_LANGS", "no languages given",
-                       fix=f'wir scope "{args.topic}" --langs pl,cs --ui {ui}', exit_code=EXIT_USAGE)
+                       fix=f"wir scope {shlex.quote(args.topic)} --langs pl,cs --ui {ui}", exit_code=EXIT_USAGE)
     langs = _resolve_langs(provider, args.langs.split(","), ui, notes)
     period = pj.parse_period(args.period) if args.period else 24
     date_from = pj.parse_month(args.date_from).strftime("%Y-%m") if args.date_from else None
@@ -232,15 +232,17 @@ def _edit(args, p: pj.Project, provider, notes: list[str], window: bool) -> dict
             status = PROXY if proxy else info.status
             entry = pj.LangEntry(lang, status, [_article(info, "main", status, proxy)] + entry.articles[1:],
                                  entry.badges)
+        elif any(a.title == info.title for a in entry.articles):
+            continue  # already in the basket
         else:
-            if all(a.title != info.title for a in entry.articles):
-                entry.articles.append(_article(info, "extra"))
+            entry.articles.append(_article(info, "extra"))
         p.entries[lang] = entry
         if info.extract:
             notes.append(t(ui, "note.set_checked", lang=lang_name(lang, ui), title=info.title, extract=info.extract))
         changed = True
     if window and (args.period or args.date_from or args.date_to):
-        p.period_months = pj.parse_period(args.period) if args.period else p.period_months
+        if args.period:  # a period replaces an explicit range unless the range is given again
+            p.period_months, p.date_from, p.date_to = pj.parse_period(args.period), None, None
         p.date_from = pj.parse_month(args.date_from).strftime("%Y-%m") if args.date_from else p.date_from
         p.date_to = pj.parse_month(args.date_to).strftime("%Y-%m") if args.date_to else p.date_to
         changed = True

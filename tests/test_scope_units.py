@@ -174,9 +174,10 @@ def test_set_marks_proxy_and_returns_first_sentence(fake):
 def test_add_article_dedupes_and_needs_a_main_article(fake):
     fake.links_ = {"uk": "Інтервальне голодування"}
     scope.run_scope(scope_args("Q1666254", langs="pl,uk", ui="en"))
-    for _ in range(2):
-        env = scope.run_scope(scope_args(add_article=["uk=Голодування"]))
-    assert env["facts"]["uk"]["articles"] == 2
+    scope.run_scope(scope_args(add_article=["uk=Голодування"]))
+    (pj.load(None).dir / "analysis.json").write_text("{}")
+    env = scope.run_scope(scope_args(add_article=["uk=Голодування"]))
+    assert env["facts"]["uk"]["articles"] == 2 and not (pj.load(None).dir / ".stale").exists()
     assert [a.role for a in pj.load(None).entries["uk"].articles] == ["main", "extra"]
     with pytest.raises(WirError) as err:
         scope.run_scope(scope_args(add_article=["pl=Głodówka lecznicza"]))
@@ -218,3 +219,18 @@ def test_many_languages_fit_the_output_limit_without_truncation(fake, capsys, mo
     out = capsys.readouterr().out
     assert len(out.strip().encode()) <= 3000 and TRUNCATED_NOTE not in out
     assert len(json.loads(out)["say"]) == 1 + len(langs)
+
+
+def test_period_edit_replaces_an_explicit_range(fake):
+    scope.run_scope(scope_args("Q1666254", langs="cs", ui="en", date_from="2024-09", date_to="2026-08"))
+    env = scope.run_scope(scope_args(period="36m"))
+    p = pj.load(None)
+    assert (p.period_months, p.date_from, p.date_to) == (36, None, None)
+    assert t("en", "period.months", n=36) in env["say"][0]
+
+
+def test_missing_langs_fix_is_a_runnable_command(fake):
+    with pytest.raises(WirError) as err:
+        scope.run_scope(scope_args('the "best" diet'))
+    args = build_parser().parse_args(shlex.split(err.value.fix)[1:])
+    assert args.topic == 'the "best" diet' and args.langs
