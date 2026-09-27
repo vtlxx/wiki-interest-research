@@ -76,11 +76,19 @@ def monthly(values, end="2026-08-01"):
 
 
 def test_trend_detects_20pct_per_year():
-    rng = np.random.default_rng(3)
+    rng = np.random.default_rng(1)
     vals = 50 * (1.2 ** (np.arange(36) / 12)) * np.exp(rng.normal(0, 0.03, 36))
     tr = st.trend(monthly(vals), seasonal=False)
-    assert tr.pct_per_year == pytest.approx(0.2, abs=0.05) and tr.p < 0.01 and tr.lo < tr.pct_per_year < tr.hi
+    assert tr.pct_per_year == pytest.approx(0.2, abs=0.02) and tr.p < 0.01 and tr.lo < tr.pct_per_year < tr.hi
+    assert tr.lo < 0.2 < tr.hi
     assert tr.method == "hamed-rao"
+
+
+def test_trend_zero_month_does_not_bias_scale():
+    vals = 50 * (1.2 ** (np.arange(36) / 12))
+    vals[10] = 0.0
+    tr = st.trend(monthly(vals), seasonal=False)
+    assert tr.pct_per_year == pytest.approx(0.2, abs=0.05)
 
 
 def test_trend_flat_not_significant_and_short_none():
@@ -95,6 +103,26 @@ def test_trend_seasonal_method():
     vals = 100 * (1.1 ** (months / 12)) * (1 + 0.5 * np.sin(2 * np.pi * months / 12))
     tr = st.trend(monthly(vals), seasonal=True)
     assert tr.method == "seasonal-mk" and tr.p < 0.01
+
+
+@pytest.mark.parametrize("phase", [0, 3, 6, 9])
+def test_trend_seasonal_flat_is_phase_invariant(phase):
+    idx = pd.date_range(end="2026-08-01", periods=48, freq="MS")
+    vals = 100 * (1 + 0.5 * np.cos(2 * np.pi * (idx.month.values - 1 - phase) / 12))
+    tr = st.trend(pd.Series(vals, index=idx), seasonal=True)
+    assert abs(tr.pct_per_year) < 0.02
+
+
+def test_trend_seasonal_with_growth_recovers_pct_per_year():
+    rng = np.random.default_rng(6)
+    idx = pd.date_range(end="2026-08-01", periods=48, freq="MS")
+    t = np.arange(48)
+    vals = (50 * (1.2 ** (t / 12)) * (1 + 0.5 * np.cos(2 * np.pi * idx.month.values / 12))
+            * np.exp(rng.normal(0, 0.03, 48)))
+    tr = st.trend(pd.Series(vals, index=idx), seasonal=True)
+    assert tr.pct_per_year == pytest.approx(0.2, abs=0.05)
+    assert tr.lo < tr.pct_per_year < tr.hi and tr.lo < 0.2 < tr.hi
+    assert tr.method == "seasonal-mk"
 
 
 def test_mk_monotone():

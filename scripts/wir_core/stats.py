@@ -119,7 +119,7 @@ def mk_hamed_rao(x) -> tuple[float, float, float]:
     return s / (n * (n - 1) / 2), float(2 * (1 - norm.cdf(abs(z)))), s
 
 
-def mk_seasonal(monthly: pd.Series) -> tuple[float, float, float]:
+def _mk_seasonal_stats(monthly: pd.Series) -> tuple[float, float, float]:
     s_total = var_total = pairs = 0.0
     for _, group in monthly.groupby(monthly.index.month):
         x = group.to_numpy(float)
@@ -128,25 +128,61 @@ def mk_seasonal(monthly: pd.Series) -> tuple[float, float, float]:
         s_total += _mk_s(x)
         var_total += _var_s(x)
         pairs += len(x) * (len(x) - 1) / 2
+    return s_total, var_total, pairs
+
+
+def mk_seasonal(monthly: pd.Series) -> tuple[float, float, float]:
+    s_total, var_total, pairs = _mk_seasonal_stats(monthly)
     z = _z(s_total, var_total)
     tau = s_total / pairs if pairs else 0.0
     return tau, float(2 * (1 - norm.cdf(abs(z)))), s_total
+
+
+def _seasonal_sen_slopes(y: np.ndarray, month: np.ndarray) -> np.ndarray:
+    """Within-calendar-month pairwise slopes across years (Hirsch et al. 1982), in y-units per year."""
+    slopes: list[float] = []
+    for m in np.unique(month):
+        vals = y[month == m]
+        n = len(vals)
+        for i in range(n):
+            for j in range(i + 1, n):
+                slopes.append((vals[j] - vals[i]) / (j - i))
+    return np.array(slopes, dtype=float)
+
+
+def _seasonal_sen_ci(slopes: np.ndarray, var_s: float, conf: float = 0.90) -> tuple[float, float]:
+    n = len(slopes)
+    if n == 0:
+        return 0.0, 0.0
+    ordered = np.sort(slopes)
+    c = float(norm.ppf(1 - (1 - conf) / 2)) * math.sqrt(var_s) if var_s > 0 else 0.0
+    lo_idx = int(np.clip(math.floor((n - c) / 2), 0, n - 1))
+    hi_idx = int(np.clip(math.ceil((n + c) / 2), 0, n - 1))
+    return float(ordered[lo_idx]), float(ordered[hi_idx])
 
 
 def trend(monthly_share: pd.Series, seasonal: bool) -> Trend | None:
     s = monthly_share.dropna()
     if len(s) < 12:
         return None
-    positive = s[s > 0]
+    v = s.to_numpy(float)
+    positive = v[v > 0]
     eps = float(positive.min()) / 2 if len(positive) else 1e-6
-    y = np.log(s.to_numpy(float) + eps)
-    slope, _intercept, low, high = theilslopes(y, np.arange(len(y)), alpha=0.90)
-    to_pct = lambda b: float(math.exp(12 * b) - 1)  # noqa: E731
+    y = np.log(np.where(v > 0, v, eps))
     if seasonal and len(y) >= 24:
-        tau, p, _ = mk_seasonal(pd.Series(y, index=s.index))
+        month = s.index.month.to_numpy()
+        s_total, var_total, pairs = _mk_seasonal_stats(pd.Series(y, index=s.index))
+        tau = s_total / pairs if pairs else 0.0
+        p = float(2 * (1 - norm.cdf(abs(_z(s_total, var_total)))))
+        slopes = _seasonal_sen_slopes(y, month)
+        slope = float(np.median(slopes)) if len(slopes) else 0.0
+        low, high = _seasonal_sen_ci(slopes, var_total)
+        to_pct = lambda b: float(math.exp(b) - 1)  # noqa: E731  (slope already per year)
         method = "seasonal-mk"
     else:
+        slope, _intercept, low, high = theilslopes(y, np.arange(len(y)), alpha=0.90)
         tau, p, _ = mk_hamed_rao(y)
+        to_pct = lambda b: float(math.exp(12 * b) - 1)  # noqa: E731  (slope is per month)
         method = "hamed-rao"
     return Trend(to_pct(slope), to_pct(low), to_pct(high), p, tau, method)
 
@@ -212,9 +248,10 @@ def seasonality(monthly_share: pd.Series) -> Seasonality | None:
     s = monthly_share.dropna()
     if len(s) < 36:
         return None
-    positive = s[s > 0]
+    v = s.to_numpy(float)
+    positive = v[v > 0]
     eps = float(positive.min()) / 2 if len(positive) else 1e-6
-    y = np.log(s.to_numpy(float) + eps)
+    y = np.log(np.where(v > 0, v, eps))
     weights = np.r_[0.5, np.ones(11), 0.5] / 12
     trend_part = np.convolve(y, weights, mode="valid")          # len = n - 12, centred on y[6:-6]
     detr = y[6:-6] - trend_part
