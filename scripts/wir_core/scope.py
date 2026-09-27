@@ -74,6 +74,11 @@ def _resolve_langs(provider, codes: list[str], ui: str, notes: list[str]) -> lis
     return langs
 
 
+def _split_codes(values: list[str]) -> list[str]:
+    """Repeated --add-lang/--drop-lang values, each of which may itself be a comma/space separated list."""
+    return [code for value in values for code in re.split(r"[,\s]+", value) if code]
+
+
 def _topic_ask(topic: str, cands: list[Candidate], ui: str, flags: list[str]) -> dict:
     """flags: the creation flags (resolved langs, ui, source, window) that every option must repeat."""
     extra = shlex.join(flags)
@@ -212,13 +217,14 @@ def _edit(args, p: pj.Project, provider, notes: list[str], window: bool) -> dict
     changed = False
     bad: tuple[str, str, str, str] | None = None
     no_main: tuple[str, str] | None = None
-    for code in args.drop_lang:
+    for code in _split_codes(args.drop_lang):
         lang, _ = provider.resolve_lang(code)
         if lang in p.langs:
             p.langs.remove(lang)
             p.entries.pop(lang, None)
             changed = True
-    new_langs = [lang for lang in _resolve_langs(provider, args.add_lang, ui, notes) if lang not in p.langs]
+    added = _resolve_langs(provider, _split_codes(args.add_lang), ui, notes)
+    new_langs = [lang for lang in added if lang not in p.langs]
     if new_langs:
         links = provider.links(p.qid, new_langs) if p.qid else {lang: (None, []) for lang in new_langs}
         for lang in new_langs:

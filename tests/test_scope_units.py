@@ -267,3 +267,12 @@ def test_basket_article_without_a_main_article_asks_instead_of_promoting_it(fake
         build_parser().parse_args(shlex.split(cmd)[1:])
     saved = pj.load(None)
     assert saved.entries["pl"].status == MISSING and not saved.entries["pl"].articles
+
+
+def test_add_and_drop_lang_accept_comma_and_space_separated_lists(fake):
+    scope.run_scope(scope_args("Q1666254", langs="cs", ui="en"))
+    args = build_parser().parse_args(shlex.split("scope --add-lang de,fr --add-lang 'it sk'"))
+    scope.run_scope(scope_args(add_lang=args.add_lang))
+    assert pj.load(None).langs == ["cs", "de", "fr", "it", "sk"]
+    scope.run_scope(scope_args(drop_lang=["de, fr", "it"]))
+    assert pj.load(None).langs == ["cs", "sk"] and set(pj.load(None).entries) == {"cs", "sk"}
