@@ -87,7 +87,7 @@
   "caveat.dominant_redirect": "{lang}: the redirect “{title}” carries a large share of the traffic; it is counted.",
   "caveat.unchecked_redirects": "{lang}: {n} redirect(s) could not be checked and are not counted.",
   "caveat.geo_skipped": "The country breakdown of spikes was skipped (offline or unavailable).",
-  "caveat.countries_skipped": "Readers by country were skipped (offline and not in the cache).",
+  "caveat.countries_skipped": "Readers by country were skipped (offline or unavailable).",
   "caveat.geo_threshold": "{lang}: spike on {day} — no country passed Wikimedia's publication threshold (about 90 views a day from one country).",
   "caveat.geo_unpublished": "{lang}: country data for the spike on {day} is not published yet.",
   "caveat.countries_rounded": "Country figures are Wikimedia's rounded upper bounds.",
