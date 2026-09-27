@@ -1,0 +1,1 @@
+{"url": "https://pl.wiktionary.org/w/api.php?action=query&format=json&formatversion=2&prop=redirects&rdlimit=max&rdnamespace=0&rdprop=title%7Cfragment&titles=post", "status": 200, "body": "{\"batchcomplete\":true,\"query\":{\"pages\":[{\"pageid\":3205,\"ns\":0,\"title\":\"post\"}]},\"limits\":{\"redirects\":500}}", "content_type": "application/json; charset=utf-8"}

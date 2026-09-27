@@ -1,0 +1,1 @@
+{"url": "https://en.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&lelimit=50&leprop=title%7Cdetails%7Ctimestamp&letitle=X%20%28social%20media%29&letype=move&list=logevents", "status": 200, "body": "{\"batchcomplete\":true,\"query\":{\"logevents\":[]}}", "content_type": "application/json; charset=utf-8"}
