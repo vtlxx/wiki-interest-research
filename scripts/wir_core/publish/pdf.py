@@ -10,6 +10,7 @@ from pathlib import Path
 import matplotlib
 from fontTools.ttLib import TTFont
 from fpdf import FPDF
+from PIL import Image
 
 from ..i18n import lang_name, t
 
@@ -17,7 +18,8 @@ FONT_DIR = Path(matplotlib.get_data_path()) / "fonts" / "ttf"
 REGULAR, BOLD = FONT_DIR / "DejaVuSans.ttf", FONT_DIR / "DejaVuSans-Bold.ttf"
 MARGIN = 12
 # (max table rows, trust reasons per language, caveats, countries chart, base font size, chart height mm)
-LEVELS = [(8, 3, 8, True, 8.0, 62), (8, 2, 6, False, 7.5, 62), (8, 1, 5, False, 7.0, 56), (6, 0, 4, False, 6.5, 50)]
+LEVELS = [(8, 3, 8, True, 8.0, 62), (8, 2, 6, True, 7.5, 58), (8, 2, 6, False, 7.5, 62), (8, 1, 5, False, 7.0, 56),
+          (6, 0, 4, False, 6.5, 50)]
 COLS = ("pdf.col.lang", "pdf.col.share", "pdf.col.growth", "pdf.col.verdict", "pdf.col.trust",
         "pdf.col.season", "pdf.col.countries", "pdf.col.supply")
 WIDTHS = (22, 16, 30, 22, 16, 18, 34, 28)          # sums to 186 mm = A4 width minus margins
@@ -76,8 +78,17 @@ def _heading(pdf: FPDF, text: str, size: float) -> None:
 
 def _para(pdf: FPDF, text: str, size: float) -> None:
     pdf.set_font("DejaVu", "", size)
-    pdf.multi_cell(0, size * 0.5, text, new_x="LMARGIN", new_y="NEXT")
+    pdf.multi_cell(0, size * 0.5, text, new_x="LMARGIN", new_y="NEXT", align="L")
     pdf.ln(0.8)
+
+
+def _image(pdf: FPDF, path: Path, x: float, y: float, box_w: float, box_h: float) -> float:
+    """Draw the chart as large as fits the box, top-left aligned; returns the height used."""
+    with Image.open(path) as img:
+        px_w, px_h = img.size
+    scale = min(box_w / px_w, box_h / px_h)
+    pdf.image(str(path), x=x, y=y, w=px_w * scale, h=px_h * scale)
+    return px_h * scale
 
 
 def _draw(analysis: dict, summary: dict, notes: dict, charts: dict, ui: str, level: int) -> FPDF:
@@ -89,7 +100,7 @@ def _draw(analysis: dict, summary: dict, notes: dict, charts: dict, ui: str, lev
     pdf.multi_cell(0, 7, proj.get("label") or proj.get("topic", ""), new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("DejaVu", "", size)
     pdf.set_text_color(90, 90, 90)
-    pdf.multi_cell(0, 4.5, t(ui, "pdf.subtitle", langs=", ".join(lang_name(code, ui) for code in langs),
+    pdf.multi_cell(0, 4.5, align="L", text=t(ui, "pdf.subtitle", langs=", ".join(lang_name(code, ui) for code in langs),
                              start=window["start"], end=window["end"], source=proj.get("source") or "wikipedia",
                              date=data_date(analysis, ui)), new_x="LMARGIN", new_y="NEXT")
     pdf.set_text_color(0, 0, 0)
@@ -98,7 +109,7 @@ def _draw(analysis: dict, summary: dict, notes: dict, charts: dict, ui: str, lev
     _para(pdf, notes["conclusion"], size + 0.5)
     _heading(pdf, t(ui, "notes.h.recommendation"), size)
     _para(pdf, notes["recommendation"], size + 0.5)
-    if notes.get("next") and level < 2:
+    if notes.get("next") and level < 3:
         _heading(pdf, t(ui, "notes.h.next"), size)
         _para(pdf, notes["next"], size)
 
@@ -119,30 +130,29 @@ def _draw(analysis: dict, summary: dict, notes: dict, charts: dict, ui: str, lev
         pdf.set_text_color(0, 0, 0)
     pdf.ln(1.5)
 
-    # fixed boxes; keep_aspect_ratio stops a tall chart (many languages) from overlapping the text below
-    y = pdf.get_y()
-    if charts.get("share") or charts.get("growth"):
-        if charts.get("share"):
-            pdf.image(str(charts["share"]), x=MARGIN, y=y, w=112, h=chart_h, keep_aspect_ratio=True)
-        if charts.get("growth"):
-            pdf.image(str(charts["growth"]), x=MARGIN + 115, y=y, w=71, h=chart_h, keep_aspect_ratio=True)
-        pdf.set_y(y + chart_h + 1)
+    # fixed boxes, top-aligned: a tall chart (many languages) shrinks instead of overlapping the text below
+    y, used = pdf.get_y(), 0.0
+    if charts.get("share"):
+        used = _image(pdf, charts["share"], MARGIN, y, 112, chart_h)
+    if charts.get("growth"):
+        used = max(used, _image(pdf, charts["growth"], MARGIN + 115, y, 71, chart_h))
+    if used:
+        pdf.set_y(y + used + 1.5)
     if with_countries and charts.get("countries"):
         y = pdf.get_y()
-        pdf.image(str(charts["countries"]), x=MARGIN, y=y, w=150, h=52, keep_aspect_ratio=True)
-        pdf.set_y(y + 53)
+        pdf.set_y(y + _image(pdf, charts["countries"], MARGIN, y, 150, 52) + 1.5)
 
     if reasons_n:
-        lines = []
+        grouped: dict[str, list[str]] = {}          # identical reasons share one line, as in the summary
         for lang in langs[:rows_max]:
             res = analysis["langs"].get(lang, {})
             if res.get("usable") and res["trust"]["reasons"]:
                 reasons = "; ".join(t(ui, f"reason.{c}") for c in res["trust"]["reasons"][:reasons_n])
-                lines.append(f"{lang_name(lang, ui)}: {reasons}")
-        if lines:
+                grouped.setdefault(reasons, []).append(lang_name(lang, ui))
+        if grouped:
             _heading(pdf, t(ui, "pdf.h.trust"), size)
-            for line in lines:
-                _para(pdf, line, size - 0.5)
+            for reasons, names in grouped.items():
+                _para(pdf, f"{', '.join(names)}: {reasons}", size - 0.5)
     _heading(pdf, t(ui, "pdf.h.limits"), size)
     for caveat in summary["caveats"][:caveats_n]:
         _para(pdf, f"• {caveat}", size - 0.5)

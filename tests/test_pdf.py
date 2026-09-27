@@ -88,11 +88,13 @@ def test_markdown_contains_everything(tmp_path):
     a = full_analysis(2)
     a["ranking"] = [{"lang": "uk", "score": 0.71, "components": {}, "eligible": True},
                     {"lang": "pl", "score": 0.4, "components": {}, "eligible": False}]
+    a["ranking"] += [{"lang": f"x{i}", "score": 0.3, "components": {}, "eligible": True} for i in range(3)]
     a["langs"]["uk"]["verify"] = {"outcome": "holds", "variants": {}}
     charts = render_all(a, tmp_path / "charts", "uk")
     out = tmp_path / "report.md"
     render_md(a, summarize(a, "uk"), NOTES, charts, out, "uk")
     text = out.read_text()
+    assert text.count("| так |") == 3 and "| польська | 0,4 | ні |" in text
     for needle in ("# Astronomy", "## Висновок", "## Що перевірити далі", "## Мови коротко", "## Рейтинг аудиторій",
                    "0,71", "## Перевірка стійкості", "## Припущення та обмеження", "(charts/share.png)",
                    "## Метод", "[Астрономія](<https://uk.wikipedia.org/wiki/x>)", "перенаправлення",

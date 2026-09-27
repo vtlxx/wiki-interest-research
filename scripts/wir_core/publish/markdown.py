@@ -45,9 +45,11 @@ def render_md(analysis: dict, summary: dict, notes: dict, charts: dict, out: Pat
 
     if analysis.get("ranking"):
         weights = ", ".join(f"{k}={fmt.number(v, ui)}" for k, v in analysis.get("weights", {}).items())
+        # the same top-3 eligible audiences that the summary's ranking sentence names
+        shortlist = {r["lang"] for r in [r for r in analysis["ranking"] if r["eligible"]][:3]}
         parts += [f"## {t(ui, 'md.h.ranking')}", _table(
             [t(ui, "pdf.col.lang"), t(ui, "md.col.score"), t(ui, "md.col.eligible")],
-            [[lang_name(r["lang"], ui), fmt.number(round(r["score"], 2), ui), t(ui, "md.yes" if r["eligible"] else "md.no")]
+            [[lang_name(r["lang"], ui), fmt.number(round(r["score"], 2), ui), t(ui, "md.yes" if r["lang"] in shortlist else "md.no")]
              for r in analysis["ranking"]]),
             t(ui, "md.weights", weights=weights)]
     verified = [(code, r["verify"]) for code, r in analysis["langs"].items() if r.get("verify")]
