@@ -42,7 +42,7 @@ Never call python directly and never read the tool's source. Every command print
    of the option the user picks. Never pick yourself. If that `cmd` contains `<title>`, ask the user for the
    exact title and put it in place of `<title>`. Repeat until `state` is `ready`.
 3. `wir analyze`. If its `next` contains `wir analyze` again, run it again (downloads continue from cache).
-4. If the user asks how far to trust the result, or any trust is not high: `wir verify`.
+4. `wir verify` (always: it is fast, needs no network and may change trust).
 5. Answer in chat with the template below.
 6. If the user wants a report/PDF (or asked for "a short report"):
    a. Copy the file `files.notes_template` to `notes.md` in the same folder.
@@ -74,12 +74,15 @@ Never call python directly and never read the tool's source. Every command print
 | "keep the previous version" | add `--fork`: `wir scope --add-lang sk --fork` |
 | new chat / "where were we?" | `wir status` |
 
-## Answer template (in the user's language)
+## Answer template (in the user's language; all five parts, in this order)
 **Short answer:** 1–2 sentences taken from `say`.
-**Data:** one line per language — share per million, 12-month change with CI, verdict, trust (from `facts`).
-**Why this trust level:** 1–3 reasons (from `say`).
+**Data:** one line per language — share per million, yearly change (last 12 months vs the 12 before) with CI,
+verdict, trust (from `facts`).
+**Why this trust level:** only the reasons in the `say` line "why this trust level" / "чому така довіра"
+and the robustness-check line. Add no reasons of your own.
 **Limitations:** 2–3 most relevant `caveats` (always: interest is not willingness to pay).
-**Next:** 1–2 items from `next`; offer the PDF if it is not built yet.
+**Next:** only the `why` texts of the last command's `next` (e.g. robustness check, PDF report); if no PDF
+was built yet, offer it. Suggest nothing else: no other languages, countries or data sources.
 
 ## Rules
 - Never calculate numbers (no ratios like "2.7×", no sums, no averages). Quote numbers only from `say`/`facts`.
@@ -96,7 +99,8 @@ Never call python directly and never read the tool's source. Every command print
 ## Examples (exact command sequences)
 1. "Порівняй зростання інтересу до інтервального голодування в польськомовній та чеськомовній Вікіпедії за останні два роки."
    `wir scope "інтервальне голодування" --langs pl,cs --ui uk --period 24m` → `input_required` (no Polish article) →
-   ask the user → e.g. `wir scope --drop-lang pl` → `wir analyze` → answer, stating that Polish Wikipedia has no such article.
+   ask the user → e.g. `wir scope --drop-lang pl` → `wir analyze` → `wir verify` → answer, stating that Polish
+   Wikipedia has no such article.
 2. "Ми думаємо додати курс з астрономії. Чи зростає інтерес в україномовній Вікіпедії, і наскільки цьому можна довіряти?"
    `wir scope "астрономія" --langs uk --ui uk` → `wir scope --add-article uk="Сонячна система" --add-article uk="Чорна діра"` →
    `wir analyze` → `wir verify` → answer with the trust reasons and seasonality.
