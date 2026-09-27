@@ -7,7 +7,7 @@ from test_charts import analysis as chart_analysis          # reuse the syntheti
 from wir_core.charts import render_all
 from wir_core.publish.markdown import render_md
 from wir_core.publish.notes import LIMITS
-from wir_core.publish.pdf import font_covers, render_pdf
+from wir_core.publish.pdf import _safe, font_covers, render_pdf, rtl_chars
 from wir_core.summary import summarize
 
 
@@ -76,6 +76,28 @@ def test_pdf_fits_with_fifteen_languages(tmp_path):
     assert "more language(s) in report.md" in text and "Assumptions and limitations" in text
 
 
+def test_many_caveats_point_to_the_full_report(tmp_path):
+    a = full_analysis(6)
+    for i in range(9):
+        a["langs"][f"x{i}"] = copy.deepcopy(a["langs"]["uk"])
+        a["project"]["langs"].append(f"x{i}")
+    summary = summarize(a, "en")
+    summary["caveats"] += [f"Extra limitation number {i} with a fairly long explanation of what it means." for i in range(16)]
+    out = tmp_path / "r.pdf"
+    assert render_pdf(a, summary, LONG, render_all(a, tmp_path / "charts", "en"), out, "en") == 1
+    text = pdf_text(out)[1]
+    assert "more limitation(s) in report.md" in text and "agent=user, access=all-access" in text
+
+
+def test_data_text_the_font_cannot_draw_is_replaced(tmp_path):
+    a = full_analysis(1)
+    a["project"]["label"] = "天文学 astronomy"
+    out = tmp_path / "r.pdf"
+    assert render_pdf(a, summarize(a, "en"), NOTES, {}, out, "en") == 1
+    assert "?? astronomy" in pdf_text(out)[1]
+    assert _safe("שלום abc") == "???? abc" and rtl_chars("مرحبا a") == set("مرحبا")
+
+
 def test_offline_analysis_says_data_date(tmp_path):
     a = full_analysis(1)
     a["provenance"]["fetched_at"] = None
@@ -99,8 +121,16 @@ def test_markdown_contains_everything(tmp_path):
                    "0,71", "## Перевірка стійкості", "## Припущення та обмеження", "(charts/share.png)",
                    "## Метод", "[Астрономія](<https://uk.wikipedia.org/wiki/x>)", "перенаправлення",
                    "wiki/%D0%97%D0%BE%D1%80%D1%8F%D0%BD%D0%B0_%D0%BD%D0%B0%D1%83%D0%BA%D0%B0?redirect=no",
-                   "12 000", "https://www.wikidata.org/wiki/Q333", "agent=user", "CC0", "словацька"):
+                   "12 000", "https://www.wikidata.org/wiki/Q333", "agent=user", "CC0", "словацька", "## Джерела\n"):
         assert needle in text, needle
+    assert "Повна версія" not in text
+
+
+def test_markdown_says_when_verify_was_not_run(tmp_path):
+    a = full_analysis(1)
+    out = tmp_path / "report.md"
+    render_md(a, summarize(a, "en"), NOTES, {}, out, "en")
+    assert "was not run" in out.read_text()
 
 
 def test_font_coverage():

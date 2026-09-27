@@ -4,6 +4,7 @@ Only the notes sections come from the model; the table, reasons, limitations, me
 analysis.json and its summary."""
 from __future__ import annotations
 
+import unicodedata
 from functools import lru_cache
 from pathlib import Path
 
@@ -18,8 +19,9 @@ FONT_DIR = Path(matplotlib.get_data_path()) / "fonts" / "ttf"
 REGULAR, BOLD = FONT_DIR / "DejaVuSans.ttf", FONT_DIR / "DejaVuSans-Bold.ttf"
 MARGIN = 12
 # (max table rows, trust reasons per language, caveats, countries chart, base font size, chart height mm)
-LEVELS = [(8, 3, 8, True, 8.0, 62), (8, 2, 6, True, 7.5, 58), (8, 2, 6, False, 7.5, 62), (8, 1, 5, False, 7.0, 56),
-          (6, 0, 4, False, 6.5, 50)]
+# caveats None = all of them
+LEVELS = [(8, 3, None, True, 8.0, 62), (8, 2, None, True, 7.5, 58), (8, 2, 6, False, 7.5, 62),
+          (8, 1, 5, False, 7.0, 56), (6, 0, 4, False, 6.5, 50)]
 COLS = ("pdf.col.lang", "pdf.col.share", "pdf.col.growth", "pdf.col.verdict", "pdf.col.trust",
         "pdf.col.season", "pdf.col.countries", "pdf.col.supply")
 WIDTHS = (22, 16, 30, 22, 16, 18, 34, 28)          # sums to 186 mm = A4 width minus margins
@@ -35,6 +37,17 @@ def font_covers(text: str) -> set[str]:
     """Characters of `text` that DejaVu Sans cannot render."""
     cmap = _cmap()
     return {ch for ch in text if not ch.isspace() and ord(ch) not in cmap}
+
+
+def rtl_chars(text: str) -> set[str]:
+    """Right-to-left letters: fpdf2 without a shaping engine would print them reversed and unjoined."""
+    return {ch for ch in text if unicodedata.bidirectional(ch) in ("R", "AL")}
+
+
+def _safe(text: str) -> str:
+    """Data text (titles in caveats, labels) with characters the PDF cannot draw replaced; report.md keeps them."""
+    bad = font_covers(text) | rtl_chars(text)
+    return "".join("?" if ch in bad else ch for ch in text) if bad else text
 
 
 def data_date(analysis: dict, ui: str) -> str:
@@ -72,13 +85,13 @@ def _pdf() -> FPDF:
 
 def _heading(pdf: FPDF, text: str, size: float) -> None:
     pdf.set_font("DejaVu", "B", size + 1.5)
-    pdf.cell(0, size * 0.6, text, new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, size * 0.6, _safe(text), new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("DejaVu", "", size)
 
 
 def _para(pdf: FPDF, text: str, size: float) -> None:
     pdf.set_font("DejaVu", "", size)
-    pdf.multi_cell(0, size * 0.5, text, new_x="LMARGIN", new_y="NEXT", align="L")
+    pdf.multi_cell(0, size * 0.5, _safe(text), new_x="LMARGIN", new_y="NEXT", align="L")
     pdf.ln(0.8)
 
 
@@ -97,12 +110,12 @@ def _draw(analysis: dict, summary: dict, notes: dict, charts: dict, ui: str, lev
     proj, window = analysis["project"], analysis["window"]
     langs = list(proj["langs"])
     pdf.set_font("DejaVu", "B", size + 7)
-    pdf.multi_cell(0, 7, proj.get("label") or proj.get("topic", ""), new_x="LMARGIN", new_y="NEXT")
+    pdf.multi_cell(0, 7, _safe(proj.get("label") or proj.get("topic", "")), new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("DejaVu", "", size)
     pdf.set_text_color(90, 90, 90)
-    pdf.multi_cell(0, 4.5, align="L", text=t(ui, "pdf.subtitle", langs=", ".join(lang_name(code, ui) for code in langs),
+    pdf.multi_cell(0, 4.5, align="L", text=_safe(t(ui, "pdf.subtitle", langs=", ".join(lang_name(code, ui) for code in langs),
                              start=window["start"], end=window["end"], source=proj.get("source") or "wikipedia",
-                             date=data_date(analysis, ui)), new_x="LMARGIN", new_y="NEXT")
+                             date=data_date(analysis, ui))), new_x="LMARGIN", new_y="NEXT")
     pdf.set_text_color(0, 0, 0)
     pdf.ln(1.5)
     _heading(pdf, t(ui, "notes.h.conclusion"), size)
@@ -119,11 +132,11 @@ def _draw(analysis: dict, summary: dict, notes: dict, charts: dict, ui: str, lev
                    padding=0.6) as table:
         head = table.row()
         for col in COLS:
-            head.cell(t(ui, col))
+            head.cell(_safe(t(ui, col)))
         for lang in langs[:rows_max]:
             row = table.row()
             for value in table_row(lang, summary["facts"], ui):
-                row.cell(str(value))
+                row.cell(_safe(str(value)))
     if len(langs) > rows_max:
         pdf.set_text_color(90, 90, 90)
         _para(pdf, t(ui, "pdf.more_langs", n=len(langs) - rows_max), size - 1)
@@ -154,15 +167,20 @@ def _draw(analysis: dict, summary: dict, notes: dict, charts: dict, ui: str, lev
             for reasons, names in grouped.items():
                 _para(pdf, f"{', '.join(names)}: {reasons}", size - 0.5)
     _heading(pdf, t(ui, "pdf.h.limits"), size)
-    for caveat in summary["caveats"][:caveats_n]:
+    caveats = summary["caveats"] if caveats_n is None else summary["caveats"][:caveats_n]
+    for caveat in caveats:
         _para(pdf, f"• {caveat}", size - 0.5)
+    if len(summary["caveats"]) > len(caveats):
+        pdf.set_text_color(90, 90, 90)
+        _para(pdf, t(ui, "pdf.more_caveats", n=len(summary["caveats"]) - len(caveats)), size - 1)
+        pdf.set_text_color(0, 0, 0)
     _heading(pdf, t(ui, "pdf.h.sources"), size)
     articles, redirects = title_counts(analysis)
     sources = t(ui, "pdf.sources", articles=articles, redirects=redirects, date=data_date(analysis, ui))
     if proj.get("qid"):
         sources += f" Wikidata: {proj['qid']}."
     pdf.set_text_color(80, 80, 80)
-    _para(pdf, t(ui, "pdf.method") + " " + sources, size - 1)
+    _para(pdf, " ".join((t(ui, "pdf.method"), t(ui, "pdf.params"), sources)), size - 1)
     pdf.set_text_color(0, 0, 0)
     return pdf
 

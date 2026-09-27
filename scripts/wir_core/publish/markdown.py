@@ -53,9 +53,9 @@ def render_md(analysis: dict, summary: dict, notes: dict, charts: dict, out: Pat
              for r in analysis["ranking"]]),
             t(ui, "md.weights", weights=weights)]
     verified = [(code, r["verify"]) for code, r in analysis["langs"].items() if r.get("verify")]
-    if verified:
-        parts += [f"## {t(ui, 'md.h.verify')}",
-                  "\n".join(f"- {lang_name(code, ui)}: {t(ui, 'verify.' + v['outcome'])}" for code, v in verified)]
+    parts += [f"## {t(ui, 'md.h.verify')}",
+              "\n".join(f"- {lang_name(code, ui)}: {t(ui, 'verify.' + v['outcome'])}" for code, v in verified)
+              if verified else t(ui, "md.verify_none")]
 
     trust_lines = []
     for code in langs:
@@ -89,8 +89,8 @@ def render_md(analysis: dict, summary: dict, notes: dict, charts: dict, out: Pat
         sources.append(f"- Wikidata: {_link(proj['qid'], 'https://www.wikidata.org/wiki/' + proj['qid'])}")
     parts += [f"## {t(ui, 'pdf.h.limits')}", "\n".join(f"- {c}" for c in summary["caveats"]),
               f"## {t(ui, 'md.h.method')}", t(ui, "pdf.method"),
-              f"## {t(ui, 'pdf.h.sources')}", "\n".join(sources),
+              f"## {t(ui, 'md.h.sources')}", "\n".join(sources),
               t(ui, "md.params", agent=params.get("agent"), access=params.get("access")),
-              t(ui, "pdf.sources", articles=articles, redirects=redirects, date=data_date(analysis, ui)),
+              t(ui, "md.counts", articles=articles, redirects=redirects, date=data_date(analysis, ui)),
               t(ui, "md.license")]
     out.write_text("\n\n".join(p for p in parts if p) + "\n", "utf-8")

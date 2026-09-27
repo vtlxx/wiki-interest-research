@@ -142,5 +142,10 @@
   "md.license": "Pageview data: Wikimedia Foundation, CC0. Wikidata: CC0. Article text is not copied into this report.",
   "md.yes": "yes", "md.no": "no",
   "publish.done": "Report ready: {pdf} (one page) and {md} (full version).",
-  "publish.bad_numbers": "These numbers are not in the data: {items}."
+  "publish.bad_numbers": "These numbers are not in the data: {items}.",
+  "pdf.more_caveats": "{n} more limitation(s) in report.md.",
+  "pdf.params": "Requests: agent=user, access=all-access; Pageviews API (per-article, aggregate, top-by-country), daily country-page dataset, Wikidata API.",
+  "md.h.sources": "Sources",
+  "md.counts": "{articles} article(s) and {redirects} redirect(s) counted; data {date}.",
+  "md.verify_none": "The robustness check (wir verify) was not run."
 }

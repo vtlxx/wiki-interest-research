@@ -144,5 +144,10 @@
   "md.license": "Дані переглядів: Wikimedia Foundation, CC0. Wikidata: CC0. Текст статей у звіт не копіюється.",
   "md.yes": "так", "md.no": "ні",
   "publish.done": "Звіт готовий: {pdf} (одна сторінка) і {md} (повна версія).",
-  "publish.bad_numbers": "Цих чисел немає в даних: {items}."
+  "publish.bad_numbers": "Цих чисел немає в даних: {items}.",
+  "pdf.more_caveats": "Ще обмежень: {n} — див. report.md.",
+  "pdf.params": "Запити: agent=user, access=all-access; Pageviews API (per-article, aggregate, top-by-country), щоденний набір даних за країнами, Wikidata API.",
+  "md.h.sources": "Джерела",
+  "md.counts": "Враховано статей: {articles}, перенаправлень: {redirects}; дані: {date}.",
+  "md.verify_none": "Перевірку стійкості (wir verify) не запускали."
 }
