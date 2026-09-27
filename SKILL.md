@@ -99,7 +99,8 @@ If a line you need is not in the output and the last caveat says the rest is in 
 the `<!-- facts:` block at the end of the `files.notes_template` file.
 
 ## Rules
-- Never calculate numbers (no ratios like "2.7×", no sums, no averages). Quote numbers only from `say`/`facts`.
+- Never calculate numbers (no ratios like "2.7×", no sums, no averages). Quote numbers only from `say`/`facts`;
+  never from analysis.json, report.md or CSV files (ranking scores are not for the user).
 - Name the topic exactly as the first `say` line of `wir scope` or `wir status` does; never guess what a QID means.
 - Take article titles from the user or from `ask.options`. If you add a title yourself (`--set` or
   `--add-article`), quote the first sentence the tool returns and list every added article in the Data part.
@@ -122,7 +123,7 @@ the `<!-- facts:` block at the end of the `files.notes_template` file.
 3. "Порівняй інтерес до вивчення англійської у pl, cs, de, es і підготуй короткий звіт: які аудиторії дослідити далі?"
    `wir scope "англійська мова" --langs pl,cs,de,es --ui uk` → (answer `ask` if any) → `wir analyze` → `wir verify` →
    notes.md → `wir publish` → answer with the ranking line (or the "no audience yet" line), say that the article
-   about the English language is measured, and give the PDF.
+   about the English language (not about learning it) is measured, and give the PDF.
 
 ## More detail (read only when needed)
 - `references/commands.md` — every flag, exit code, output file (`wir <command> --help` also works).
