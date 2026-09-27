@@ -8,7 +8,7 @@ from typing import Any, TextIO
 from .errors import EXIT_INPUT, EXIT_OK, EXIT_USAGE, WirError
 
 MAX_BYTES = 3000
-TRUNCATED_NOTE = "Output truncated — full details are in files.data (analysis.json)."
+TRUNCATED_NOTE = "Output truncated — the full details are in the project files."
 
 
 def make(state: str, *, project: Any = None, say=None, facts=None, caveats=None, ask=None,
