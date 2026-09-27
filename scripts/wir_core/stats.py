@@ -114,7 +114,7 @@ def mk_hamed_rao(x) -> tuple[float, float, float]:
             if abs(rho) > 1.96 / math.sqrt(n):
                 acc += (n - k) * (n - k - 1) * (n - k - 2) * rho
     factor = 1 + 2 * acc / (n * (n - 1) * (n - 2))
-    var_mod = var * max(factor, 1e-6)
+    var_mod = var * max(factor, 1.0)  # never shrink below plain MK: negative autocorrelation is not credited
     z = _z(s, var_mod)
     return s / (n * (n - 1) / 2), float(2 * (1 - norm.cdf(abs(z)))), s
 

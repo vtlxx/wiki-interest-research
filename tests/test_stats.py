@@ -130,6 +130,33 @@ def test_mk_monotone():
     assert tau == pytest.approx(1.0) and p < 0.001 and s == 24 * 23 / 2
 
 
+
+def _ar1(seed, phi=-0.6, n=24):
+    rng = np.random.default_rng(seed)
+    e = rng.standard_normal(n)
+    x = np.zeros(n)
+    x[0] = e[0]
+    for i in range(1, n):
+        x[i] = phi * x[i - 1] + e[i]
+    return x
+
+
+def _plain_mk_p(x):
+    z = st._z(st._mk_s(x), st._var_s(x))
+    return float(2 * (1 - st.norm.cdf(abs(z))))
+
+
+def test_mk_negative_autocorrelation_noise_not_significant():
+    tau, p, s = st.mk_hamed_rao(_ar1(4))
+    assert p > 0.10
+
+
+def test_mk_hamed_rao_never_more_significant_than_plain_mk():
+    for seed in range(40):
+        x = _ar1(seed)
+        assert st.mk_hamed_rao(x)[1] >= _plain_mk_p(x) - 1e-12, seed
+
+
 # ---- spikes ---------------------------------------------------------------------------------
 def test_spike_episode_detected_and_despiked():
     n = 120
