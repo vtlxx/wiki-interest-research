@@ -106,14 +106,20 @@
   "notes.instructions": "Пишіть мовою користувача. Використовуйте ЛИШЕ числа з фактів нижче. Не більше 3 речень у розділі. Заголовки не змінюйте.",
   "chart.share.title": "Частка від усіх переглядів розділу, на мільйон (щомісяця)",
   "chart.share.y": "переглядів на мільйон",
-  "chart.index.title": "Індекс: перший рік періоду = 100",
+  "chart.index.title": "Індекс: середнє перших 12 місяців з даними = 100",
+  "chart.index.title3": "Індекс: середнє перших 3 місяців з даними = 100",
   "chart.growth.title": "Останні 12 місяців проти попередніх 12 (90% ДІ)",
   "chart.countries.title": "Звідки читачі кожного розділу (останні 12 місяців)",
   "chart.countries.other": "інші",
-  "chart.season.title": "Типовий річний патерн (відхилення від середнього)",
+  "chart.season.title": "Типовий річний профіль (відхилення від середнього)",
   "chart.source": "Джерело: Wikimedia Analytics API · перегляди, agent=user · завантажено {date}",
+  "chart.source_through": "Джерело: Wikimedia Analytics API · перегляди, agent=user · дані до {date}",
+  "chart.source_plain": "Джерело: Wikimedia Analytics API · перегляди, agent=user",
   "chart.incident": "проблема даних",
   "chart.rename": "перейменування",
   "chart.spike": "сплеск",
-  "chart.trust": "довіра: {level}"
+  "chart.trust": "довіра: {level}",
+  "chart.month.1": "січ", "chart.month.2": "лют", "chart.month.3": "бер", "chart.month.4": "кві",
+  "chart.month.5": "тра", "chart.month.6": "чер", "chart.month.7": "лип", "chart.month.8": "сер",
+  "chart.month.9": "вер", "chart.month.10": "жов", "chart.month.11": "лис", "chart.month.12": "гру"
 }

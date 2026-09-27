@@ -104,14 +104,20 @@
   "notes.instructions": "Write in the user's language. Use ONLY numbers that appear in the facts below. At most 3 sentences per section. Keep the headings.",
   "chart.share.title": "Share of all views in the edition, per million (monthly)",
   "chart.share.y": "views per million",
-  "chart.index.title": "Index: first year of the period = 100",
+  "chart.index.title": "Index: average of the first 12 months with data = 100",
+  "chart.index.title3": "Index: average of the first 3 months with data = 100",
   "chart.growth.title": "Last 12 months vs the 12 before (90% CI)",
   "chart.countries.title": "Where readers of each edition are (last 12 months)",
   "chart.countries.other": "other",
   "chart.season.title": "Typical yearly pattern (deviation from average)",
   "chart.source": "Source: Wikimedia Analytics API · pageviews, agent=user · fetched {date}",
+  "chart.source_through": "Source: Wikimedia Analytics API · pageviews, agent=user · data through {date}",
+  "chart.source_plain": "Source: Wikimedia Analytics API · pageviews, agent=user",
   "chart.incident": "data issue",
   "chart.rename": "renamed",
   "chart.spike": "spike",
-  "chart.trust": "trust: {level}"
+  "chart.trust": "trust: {level}",
+  "chart.month.1": "Jan", "chart.month.2": "Feb", "chart.month.3": "Mar", "chart.month.4": "Apr",
+  "chart.month.5": "May", "chart.month.6": "Jun", "chart.month.7": "Jul", "chart.month.8": "Aug",
+  "chart.month.9": "Sep", "chart.month.10": "Oct", "chart.month.11": "Nov", "chart.month.12": "Dec"
 }
