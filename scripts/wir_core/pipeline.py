@@ -320,9 +320,10 @@ def _write_csvs(p: pj.Project, frames: dict[str, dict[str, pd.Series]], results:
                 w.writerow([lang, row["month"], row["views"], row["project_views"], row["share"]])
 
 
-def _write_notes_template(p: pj.Project, summary: dict) -> None:
+def _write_notes_template(p: pj.Project, summary: dict, extra_say: list[str] | None = None) -> None:
+    """The facts block also holds the verify lines: it is the agent's fallback for lines the 3 KB answer drops."""
     ui = p.ui
-    facts = "\n".join(f"- {line}" for line in summary["say"])
+    facts = "\n".join(f"- {line}" for line in list(summary["say"]) + list(extra_say or []))
     text = (f"<!-- {t(ui, 'notes.instructions')} -->\n\n"
             f"## {t(ui, 'notes.h.conclusion')}\n\n\n"
             f"## {t(ui, 'notes.h.recommendation')}\n\n\n"
@@ -380,7 +381,7 @@ def _finish(p: pj.Project, analysis: dict, extra_say: list[str] | None = None) -
     ui = p.ui
     analysis["summary"] = summarize(analysis, ui)
     (p.dir / "analysis.json").write_text(json.dumps(analysis, ensure_ascii=False, indent=1, default=str), "utf-8")
-    _write_notes_template(p, analysis["summary"])
+    _write_notes_template(p, analysis["summary"], extra_say)
     charts = _render_charts(analysis, p)
     s = analysis["summary"]
     nxt = []

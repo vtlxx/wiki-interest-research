@@ -49,6 +49,7 @@ def test_offline_rerun_and_verify(cli_fixtures, run_cli, monkeypatch):
     assert code == 0 and env["facts"]["cs"]["verify"] in ("the verdict holds", "the verdict weakens",
                                                           "the verdict reverses")
     assert load_analysis(env)["langs"]["cs"]["verify"]["variants"]["half_year"] is not None
+    assert "Czech: robustness check" in (proj / "notes.template.md").read_text("utf-8")   # fallback when trimmed
     (proj / ".stale").write_text("")
     code, env = run_cli("verify")
     assert code == 5 and env["error"]["code"] == "STALE_ANALYSIS"
