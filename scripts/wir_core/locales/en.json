@@ -101,5 +101,17 @@
   "verify.lang": "{lang}: robustness check — {outcome}; trust is now {trust}.",
   "verify.holds": "the verdict holds", "verify.weakens": "the verdict weakens", "verify.flips": "the verdict reverses",
   "notes.h.conclusion": "Conclusion", "notes.h.recommendation": "Recommendation", "notes.h.next": "What to check next",
-  "notes.instructions": "Write in the user's language. Use ONLY numbers that appear in the facts below. At most 3 sentences per section. Keep the headings."
+  "notes.instructions": "Write in the user's language. Use ONLY numbers that appear in the facts below. At most 3 sentences per section. Keep the headings.",
+  "chart.share.title": "Share of all views in the edition, per million (monthly)",
+  "chart.share.y": "views per million",
+  "chart.index.title": "Index: first year of the period = 100",
+  "chart.growth.title": "Last 12 months vs the 12 before (90% CI)",
+  "chart.countries.title": "Where readers of each edition are (last 12 months)",
+  "chart.countries.other": "other",
+  "chart.season.title": "Typical yearly pattern (deviation from average)",
+  "chart.source": "Source: Wikimedia Analytics API · pageviews, agent=user · fetched {date}",
+  "chart.incident": "data issue",
+  "chart.rename": "renamed",
+  "chart.spike": "spike",
+  "chart.trust": "trust: {level}"
 }
