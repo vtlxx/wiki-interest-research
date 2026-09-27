@@ -24,7 +24,7 @@ LEVELS = [(8, 3, None, True, 8.0, 62), (8, 2, None, True, 7.5, 58), (8, 2, 6, Fa
           (8, 1, 5, False, 7.0, 56), (6, 0, 4, False, 6.5, 50)]
 COLS = ("pdf.col.lang", "pdf.col.share", "pdf.col.growth", "pdf.col.verdict", "pdf.col.trust",
         "pdf.col.season", "pdf.col.countries", "pdf.col.supply")
-WIDTHS = (22, 16, 30, 22, 16, 18, 34, 28)          # sums to 186 mm = A4 width minus margins
+WIDTHS = (21, 19, 30, 20, 16, 21, 33, 26)          # sums to 186 mm = A4 width minus margins
 
 
 @lru_cache(maxsize=1)
