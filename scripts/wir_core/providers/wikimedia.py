@@ -5,26 +5,39 @@ import html
 import json
 import re
 import sys
-from dataclasses import replace
+from dataclasses import asdict, replace
 from datetime import date, timedelta
 from urllib.parse import urlsplit
 
-from ..cache import TTL_404, TTL_META, TTL_OLD
+from ..cache import TTL_404, TTL_META, TTL_OLD, TTL_RECENT, TTL_STATIC
 from ..config import assets_dir, today_utc
 from ..errors import EXIT_NETWORK, EXIT_NODATA, EXIT_USAGE, WirError
+from ..geo import parse_dp_lines
 from ..net import HttpClient, encode_title
-from .base import (DISAMBIGUATION, FOUND, MISSING, SECTION, VIA_REDIRECT, Candidate, Move, PageInfo,
-                   Redirect)
+from .base import (DISAMBIGUATION, FOUND, MISSING, SECTION, VIA_REDIRECT, Candidate, GeoRow, Move,
+                   PageInfo, Redirect)
 
 WIKIDATA_API = "https://www.wikidata.org/w/api.php"
 META_API = "https://meta.wikimedia.org/w/api.php"
 SITE_CODE = {"wikipedia": "wiki", "wiktionary": "wiktionary", "wikivoyage": "wikivoyage"}
 MAX_PV_REQUESTS = 6          # prop=pageviews continuation budget per call of views_60d
 MAX_MOVE_LOOKUPS = 30        # move-log lookups per article
+AQS = "https://wikimedia.org/api/rest_v1/metrics/pageviews"
+DATA_START = date(2015, 7, 1)                # pageviews start; earlier dates are silently ignored by AQS
+DP_URL = "https://analytics.wikimedia.org/published/datasets/country_project_page/{day}.tsv"
+DP_START = date(2023, 2, 6)                  # first day of the differential-privacy country/project/page dataset
 _PUBLICATION = re.compile(r"\b(scholarly|scientific|journal) article\b|\bthesis\b|\bpreprint\b", re.I)
 _TAG = re.compile(r"<[^>]+>")
 # MediaWiki error codes that mean "try again later", not "bad input".
 _TRANSIENT = {"ratelimited", "maxlag", "readonly", "internal_api_error_DBQueryError"}
+
+
+def _parse_items(data: dict | None) -> dict[date, int]:
+    out: dict[date, int] = {}
+    for item in (data or {}).get("items", []):
+        ts = item["timestamp"]
+        out[date(int(ts[:4]), int(ts[4:6]), int(ts[6:8]))] = int(item["views"])
+    return out
 
 
 def _chunks(items: list, size: int):
@@ -303,3 +316,56 @@ class WikimediaProvider:
                                 "rvend": f"{day.isoformat()}T00:00:00Z"}, ttl=ttl)
         pages = data.get("query", {}).get("pages", [])
         return len(pages[0].get("revisions", [])) if pages else 0
+
+    # ---- pageview series (AQS) ------------------------------------------------------------------
+    def _series(self, url: str) -> dict | None:
+        """Series URLs end with the end date; offline mode falls back to the newest cached copy of the
+        SAME series (the cache key up to the final '/' — the date segment is what varies day to day)."""
+        if self.http.offline:
+            hit = self.http.cache.latest(url.rsplit("/", 1)[0] + "/")
+            if hit is not None:
+                _key, status, body = hit
+                return None if status == 404 else json.loads(body)
+        return self.http.get_json(url, ttl=TTL_RECENT)
+
+    def article_daily(self, lang: str, title: str) -> dict[date, int]:
+        end = today_utc() - timedelta(days=1)
+        url = (f"{AQS}/per-article/{self.aqs_project(lang)}/all-access/user/{encode_title(title)}"
+               f"/daily/{DATA_START:%Y%m%d}/{end:%Y%m%d}")
+        return _parse_items(self._series(url))
+
+    def project_daily(self, lang: str) -> dict[date, int]:
+        end = today_utc() - timedelta(days=1)
+        url = f"{AQS}/aggregate/{self.aqs_project(lang)}/all-access/user/daily/{DATA_START:%Y%m%d}00/{end:%Y%m%d}00"
+        return _parse_items(self._series(url))
+
+    def countries(self, lang: str, year: int, month: int) -> list[tuple[str, int]]:
+        data = self.http.get_json(f"{AQS}/top-by-country/{self.aqs_project(lang)}/all-access/{year}/{month:02d}",
+                                  ttl=TTL_OLD)
+        items = (data or {}).get("items", [])
+        rows = items[0].get("countries", []) if items else []
+        return [(r["country"], int(r["views_ceil"])) for r in rows if r.get("country") not in (None, "--")]
+
+    def spike_geo(self, day: date, qids: list[str]) -> dict[str, list[GeoRow]]:
+        """Country x project breakdown of one day's traffic to the given Wikidata items, from the
+        differential-privacy dataset. Streamed and cached per (day, qid), including empty results, so a
+        repeated call (even for a different qid of the same day) never re-downloads the file."""
+        if day < DP_START:
+            return {q: [] for q in qids}
+        cache = self.http.cache
+        out: dict[str, list[GeoRow]] = {}
+        missing: list[str] = []
+        for qid in dict.fromkeys(qids):
+            hit = cache.get_json(f"dp:{day.isoformat()}:{qid}", allow_stale=True)
+            if hit is None:
+                missing.append(qid)
+            else:
+                out[qid] = [GeoRow(**row) for row in hit]
+        if missing:
+            # If the download breaks mid-file, parse_dp_lines raises before returning and this assignment
+            # never completes, so no qid is cached from a partial file (HANDOFF open issue #6).
+            rows = parse_dp_lines(self.http.iter_lines(DP_URL.format(day=day.isoformat())), set(missing))
+            for qid in missing:
+                out[qid] = rows.get(qid, [])
+                cache.put_json(f"dp:{day.isoformat()}:{qid}", [asdict(r) for r in out[qid]], TTL_STATIC)
+        return out
