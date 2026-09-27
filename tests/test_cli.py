@@ -55,3 +55,16 @@ def test_unemittable_result_is_json(wir_env, run_cli, monkeypatch):
     monkeypatch.setitem(cli.COMMANDS, "status", ("wir_core._none", "run"))
     code, env = run_cli("status")
     assert code == 3 and env["error"]["code"] == "INTERNAL"
+
+
+def test_missing_dependency_inside_a_command(wir_env, run_cli, monkeypatch):
+    fake = types.ModuleType("wir_core._nodeps")
+
+    def run(args):
+        raise ModuleNotFoundError("No module named 'httpx'", name="httpx")
+
+    fake.run = run
+    monkeypatch.setitem(__import__("sys").modules, "wir_core._nodeps", fake)
+    monkeypatch.setitem(cli.COMMANDS, "status", ("wir_core._nodeps", "run"))
+    code, env = run_cli("status")
+    assert code == 3 and env["error"]["code"] == "DEPS_MISSING" and "scripts/wir" in env["error"]["fix"]

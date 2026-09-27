@@ -81,6 +81,13 @@ def main(argv: list[str] | None = None) -> int:
         return emit(env)
     except WirError as err:
         return emit(from_error(err, project=project))
+    except ModuleNotFoundError as exc:
+        if exc.name and not exc.name.startswith("wir_core"):  # a third-party dependency is not installed
+            return emit(from_error(WirError(
+                "DEPS_MISSING", str(exc), fix="Run the tool through scripts/wir (it uses uv to install dependencies)."),
+                project=project))
+        traceback.print_exc(file=sys.stderr)
+        return emit(from_error(WirError("INTERNAL", f"{type(exc).__name__}: {exc}"), project=project))
     except Exception as exc:  # never leak a traceback to stdout
         traceback.print_exc(file=sys.stderr)
         return emit(from_error(WirError(
