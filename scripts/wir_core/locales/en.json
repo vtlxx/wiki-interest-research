@@ -20,6 +20,7 @@
   "ask.bad_title": "“{title}” is not usable in {lang} ({reason}). Choose another title:",
   "ask.wiktionary": "Wiktionary tracks single words, not topics. Which word should be tracked in each language?",
   "opt.drop": "Continue without {lang}",
+  "opt.topic": "{label} — {description} ({n} wikis)",
   "opt.own": "Use another article — replace <title> with the exact title",
   "opt.word": "Word in {lang} — replace <word>",
   "reason.missing": "no such article",
