@@ -247,6 +247,9 @@ def _edit(args, p: pj.Project, provider, notes: list[str], window: bool) -> dict
         p.date_from = pj.parse_month(args.date_from).strftime("%Y-%m") if args.date_from else p.date_from
         p.date_to = pj.parse_month(args.date_to).strftime("%Y-%m") if args.date_to else p.date_to
         changed = True
+    if not p.langs:  # nothing left to analyse; refuse before anything is saved
+        raise WirError("LAST_LANG", "the project needs at least one language; add another one before dropping this",
+                       fix="wir scope --add-lang <code>", exit_code=EXIT_USAGE)
     if changed:
         _save_edited(p)
     return _title_ask(provider, p, *bad, notes) if bad else None

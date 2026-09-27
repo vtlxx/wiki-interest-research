@@ -245,3 +245,13 @@ def test_bad_basket_title_offers_add_article_and_keeps_the_main_article(fake):
     for cmd in cmds(env):
         build_parser().parse_args(shlex.split(cmd)[1:])
     assert [(a.title, a.role) for a in pj.load(None).entries["cs"].articles] == [("Přerušovaný půst", "main")]
+
+
+def test_dropping_the_last_language_is_refused_and_the_project_is_kept(fake):
+    scope.run_scope(scope_args("Q1666254", langs="cs", ui="en"))
+    with pytest.raises(WirError) as err:
+        scope.run_scope(scope_args(drop_lang=["cs"]))
+    assert err.value.code == "LAST_LANG" and err.value.exit_code == 3
+    assert err.value.fix == "wir scope --add-lang <code>"
+    build_parser().parse_args(shlex.split(err.value.fix)[1:])
+    assert pj.load(None).langs == ["cs"] and "cs" in pj.load(None).entries
