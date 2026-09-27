@@ -30,7 +30,7 @@ INK, MUTED, GRID, SHADE = "#222222", "#555555", "#DDDDDD", "#9E9E9E"
 SHADED = ("medium", "high")          # low severity = small or since corrected: not worth shading
 DPI = 200
 # Figures are drawn close to the size the one-page PDF prints them at (share 112×62 mm, growth 71×62 mm),
-# so 8-pt text stays at ≥6 pt on paper.
+# so 8-pt text stays at ≥6 pt on paper for up to ~5 languages (more languages make growth/countries taller).
 STYLE = {"font.family": "DejaVu Sans", "font.size": 8, "axes.spines.top": False, "axes.spines.right": False,
          "axes.titlesize": 9.5, "axes.titleweight": "bold", "axes.edgecolor": MUTED, "axes.labelcolor": INK,
          "axes.labelsize": 8, "xtick.labelsize": 8, "ytick.labelsize": 8, "xtick.color": MUTED,
@@ -275,7 +275,7 @@ def growth_chart(analysis: dict, out: Path, ui: str) -> Path | None:
     if not langs:
         return None
     with plt.rc_context(STYLE):
-        fig, ax = plt.subplots(figsize=(3.5, 0.5 * len(langs) + 0.95))
+        fig, ax = plt.subplots(figsize=(3.5, 0.36 * len(langs) + 0.95))
         ys = list(range(len(langs)))[::-1]                    # first language on top
         for y, lang in zip(ys, langs):
             res = analysis["langs"][lang]
@@ -308,7 +308,7 @@ def countries_chart(analysis: dict, out: Path, ui: str) -> Path | None:
     if not langs:
         return None
     with plt.rc_context(STYLE):
-        fig, ax = plt.subplots(figsize=(5.4, 0.34 * len(langs) + 0.85))
+        fig, ax = plt.subplots(figsize=(5.4, 0.28 * len(langs) + 0.85))
         ys = list(range(len(langs)))[::-1]
         for y, lang in zip(ys, langs):
             left, small = 0.0, []
