@@ -10,8 +10,8 @@ All commands print one JSON object (at most about 3 KB): `ok, state, project, sa
 files, error`. Keys without a value are left out. Progress messages go to stderr.
 
 - `state`: `ready` (continue), `input_required` (ask the user `ask.question`), `failed` (see `error`).
-- `ask`: `{"question", "options": [{"label", "cmd"}]}`. A `cmd` with `<title>` or `<word>` needs the exact
-  title or word from the user in place of the placeholder.
+- `ask`: `{"question", "options": [{"label", "cmd"}]}`. A `cmd` or `error.fix` with `<title>`, `<word>` or
+  `<codes>` needs the exact title, word or language codes from the user in place of the placeholder.
 - `next`: `[{"why", "cmd"}]`. `error`: `{"code", "message", "fix"}`.
 - When the full answer does not fit, the last `say` or `caveats` line says the rest is in `analysis.json`.
 
@@ -32,7 +32,7 @@ files, error`. Keys without a value are left out. Progress messages go to stderr
 | `BAD_PERIOD`, `BAD_MONTH`, `BAD_WINDOW` | 3 | period not like `24m`/`2y`, month not `YYYY-MM`, or no complete month in the range |
 | `BAD_ASSIGNMENT` | 3 | `--set`/`--add-article` not in the form `LANG="Title"` |
 | `BAD_WEIGHTS` | 3 | `--weights` key not in level, momentum, size, gap, or a negative value |
-| `MISSING_LANGS` | 3 | a new project needs `--langs` |
+| `MISSING_LANGS` | 3 | a new project needs `--langs`: ask the user which languages to compare |
 | `LAST_LANG` | 3 | the only language of a project cannot be dropped |
 | `UNKNOWN_LANG`, `UNKNOWN_SOURCE` | 3 | no open wiki with that code / unknown `--source` |
 | `NOTES_MISSING`, `NOTES_INCOMPLETE`, `NOTES_TOO_LONG` | 3 | notes.md absent, a required section empty, or a section too long |
@@ -93,7 +93,8 @@ Editing the latest project (or `--project <dir>`): `--add-lang`, `--drop-lang`, 
 - `ask` appears when the topic is ambiguous, a language has no article, a title is unusable or a basket
   article is added before a main one. Every option is a ready command. A corrected language code (e.g.
   `cz` → `cs`) is reported in `caveats`.
-- Editing an analysed project marks it stale: run `wir analyze` again before `wir verify` or `wir publish`.
+- Editing an analysed project marks it stale: run `wir analyze` and `wir verify` again before `wir publish`.
+  A new `wir analyze` also replaces earlier verify results.
 
 ## wir analyze
 

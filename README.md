@@ -79,7 +79,7 @@ uv run pytest                 # offline: unit tests and end-to-end runs replayed
 uv run pytest -m live         # a few checks against the real Wikimedia APIs
 uvx --from skills-ref agentskills validate ../wiki-interest-research
 ```
-Agent-level evaluations on Claude Haiku 4.5 live in `evals/`. Details: [DEVELOPMENT.md](DEVELOPMENT.md).
+Details, including how the agent side was checked on Claude Haiku 4.5: [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## Privacy
 The tool reads only public Wikimedia data and sends no user data anywhere. Requests carry a User-Agent with

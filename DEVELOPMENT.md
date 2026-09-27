@@ -104,10 +104,12 @@ not trusted by default:
   against manual research notes.
 - **Visual inspection** of every chart and PDF produced during the real calls (legibility, Cyrillic,
   one page, numbers equal to `analysis.json`).
-- **Cross-check of pageview totals** against pageviews.wmcloud.org for several articles.
-- **Dry runs and evaluations on Claude Haiku 4.5** (`evals/`): the cheap target model follows SKILL.md,
-  and a grader checks the command order, the reaction to `ask` and that every number in the answer exists
-  in the data.
+- **Dry runs on Claude Haiku 4.5**: the cheap target model followed SKILL.md on the task examples; every
+  number in its answers was checked against the data with `numcheck`, and SKILL.md was reworded wherever
+  Haiku went wrong (invented next steps and trust reasons, a skipped robustness check).
+- **Still to be recorded below:** a cross-check of pageview totals against pageviews.wmcloud.org for several
+  articles, and scripted evaluation runs on Haiku 4.5 with a grader for the command order, the reaction to
+  `ask` and the numbers in the answer.
 
 ## Verification results
 Filled after the evaluation run (see evals/runs/).

@@ -13,7 +13,8 @@ data incidents · trust · verify · supply · ranking · countries.
 ## Topic = articles + redirects
 - The topic's views in a language = main article + basket articles (`--add-article`) + counted redirects.
 - A redirect is counted when its views over the last 60 days are ≥ 1% of the main article's, or when it is an
-  old title of the article (a rename) — renamed titles always count. Redirects to a section are not counted.
+  old title of the article (a rename) — renamed titles always count. Redirects to a section of the article
+  are counted like the others.
 - Coverage = counted views ÷ all checked views (main + redirects). A dominant redirect carries > 30% of them.
   Redirects whose 60-day views could not be checked within the request budget are listed as a count.
 - Young article: if it was created less than 90 days before the window start (or later), the analysis
@@ -75,7 +76,7 @@ counts once). A stand-in article caps trust at **medium**. At most 5 reasons are
 | `low_volume` | minor | median monthly views < 300 |
 | `history_lt_24` | minor | 12–23 months of data |
 | `spiky` | minor | spike share 20–50% |
-| `verify_weakens` | minor | `wir verify`: some variants lose the direction (or find one G lacks) |
+| `verify_weakens` | minor | `wir verify`: some variants show no clear direction, or show one when G has none |
 | `data_incident` | minor | a high-severity incident overlaps the 104 weeks of G |
 | `redirect_coverage`, `dominant_redirect` | minor (one rule) | coverage < 90%, or one redirect > 30% |
 | `young_article`, `renamed` | minor (one rule) | created shortly before the window, or renamed inside it |
@@ -86,7 +87,8 @@ counts once). A stand-in article caps trust at **medium**. At most 5 reasons are
 ## Verify
 Four variants from the saved data: spike-free G; half-year G (last 26 weeks vs the same 26 weeks a year
 earlier); trend over the last 24 months; trend over the last 36 months (if available). Each gives +1, −1 or
-0 (G: growing/declining; trend: sign when significant). If G has a direction: any opposite variant →
+0 (G: growing/declining; trend: sign when significant — with ≥ 4 languages by the Benjamini–Hochberg
+q-value). If G has a direction: any opposite variant →
 **flips**, any 0 → **weakens**, else **holds**. If G has none: all 0 → holds, else weakens. Trust and
 ranking are recomputed.
 
