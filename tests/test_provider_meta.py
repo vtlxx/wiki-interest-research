@@ -38,6 +38,7 @@ def test_redirects_include_known_alias(recorded_client):
     reds = wp(recorded_client).redirects("en", "Intermittent fasting")
     titles = {r.title for r in reds}
     assert "5:2 diet" in titles
+    assert all(r.views_60d is not None for r in reds)  # ~25 redirects fit in the pageviews budget
     assert any(r.views_60d for r in reds)
 
 
@@ -45,6 +46,7 @@ def test_move_log_twitter(recorded_client):
     moves = wp(recorded_client).moves("en", ["Twitter"])
     assert any(m.source == "Twitter" and m.target == "X (social network)" and m.when == date(2026, 2, 25)
                for m in moves)
+    assert not any(":" in m.target for m in moves)  # the 2026-03-11 move into Draft: space is dropped
 
 
 def test_search_in_wiki_pl(recorded_client):
@@ -53,4 +55,4 @@ def test_search_in_wiki_pl(recorded_client):
 
 
 def test_edits_on_returns_count(recorded_client):
-    assert wp(recorded_client).edits_on("en", "Intermittent fasting", date(2026, 3, 2)) >= 0
+    assert wp(recorded_client).edits_on("en", "Intermittent fasting", date(2025, 12, 5)) == 6
