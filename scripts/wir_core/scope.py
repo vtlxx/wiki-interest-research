@@ -82,10 +82,11 @@ def _topic_ask(topic: str, cands: list[Candidate], ui: str, flags: list[str]) ->
     return make("input_required", ask={"question": t(ui, "ask.which_topic", topic=topic), "options": options})
 
 
-def _title_ask(provider, p: pj.Project, lang: str, title: str, reason_key: str, notes: list[str]) -> dict:
-    options = [{"label": f"{hit} — {snippet[:SNIPPET]}", "cmd": f"wir scope --set {lang}={shlex.quote(hit)}"}
+def _title_ask(provider, p: pj.Project, lang: str, title: str, reason_key: str, flag: str, notes: list[str]) -> dict:
+    """flag: the edit flag that failed (--set or --add-article); every option repeats it with another title."""
+    options = [{"label": f"{hit} — {snippet[:SNIPPET]}", "cmd": f"wir scope {flag} {lang}={shlex.quote(hit)}"}
                for hit, snippet in provider.search_in_wiki(lang, title, 4) if hit != title][:3]
-    options.append({"label": t(p.ui, "opt.own"), "cmd": f'wir scope --set {lang}="<title>"'})
+    options.append({"label": t(p.ui, "opt.own"), "cmd": f'wir scope {flag} {lang}="<title>"'})
     return make("input_required", project=pj.rel(p.dir), caveats=notes, ask={
         "question": t(p.ui, "ask.bad_title", title=title, lang=lang_name(lang, p.ui), reason=t(p.ui, reason_key)),
         "options": options})
@@ -200,7 +201,7 @@ def _edit(args, p: pj.Project, provider, notes: list[str], window: bool) -> dict
     """Apply edit flags; `window` = also apply --period/--from/--to. Returns an ask for the first unusable title."""
     ui = p.ui
     changed = False
-    bad: tuple[str, str, str] | None = None
+    bad: tuple[str, str, str, str] | None = None
     for code in args.drop_lang:
         lang, _ = provider.resolve_lang(code)
         if lang in p.langs:
@@ -223,7 +224,7 @@ def _edit(args, p: pj.Project, provider, notes: list[str], window: bool) -> dict
                            fix=f"wir scope --set {lang}={shlex.quote(title)}", exit_code=EXIT_USAGE)
         info = provider.inspect(lang, [title])[title]
         if info.status in PROBLEM_STATUSES:
-            bad = bad or (lang, title, f"reason.{info.status}")
+            bad = bad or (lang, title, f"reason.{info.status}", "--set" if role == "main" else "--add-article")
             continue
         if lang not in p.langs:
             p.langs.append(lang)

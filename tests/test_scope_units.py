@@ -234,3 +234,14 @@ def test_missing_langs_fix_is_a_runnable_command(fake):
         scope.run_scope(scope_args('the "best" diet'))
     args = build_parser().parse_args(shlex.split(err.value.fix)[1:])
     assert args.topic == 'the "best" diet' and args.langs
+
+
+def test_bad_basket_title_offers_add_article_and_keeps_the_main_article(fake):
+    scope.run_scope(scope_args("Q1666254", langs="pl,cs", ui="en"))
+    env = scope.run_scope(scope_args(add_article=["cs=Post"]))
+    assert env["state"] == "input_required" and cmds(env)
+    assert all(c.startswith("wir scope --add-article cs=") for c in cmds(env))
+    assert 'wir scope --add-article cs="<title>"' in cmds(env)
+    for cmd in cmds(env):
+        build_parser().parse_args(shlex.split(cmd)[1:])
+    assert [(a.title, a.role) for a in pj.load(None).entries["cs"].articles] == [("Přerušovaný půst", "main")]
