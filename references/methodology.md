@@ -101,6 +101,7 @@ articles, with ≥ 2 of them) · good / featured (Wikidata badges) · regular.
   percentile of log(1 + mean monthly views, last 12 months); gap = 1 if supply is missing or short, else 0.
 - Score = weighted mean. Default weights: level 0.35, momentum 0.35, size 0.2, gap 0.1 (`--weights`).
 - Eligible: trust is not low and G is known. The top 3 eligible languages are "worth researching next".
+  If none is eligible, the answer says no audience can be recommended yet and names the top 3 by score.
 
 ## Countries
 - Readers of the whole edition (not of the topic) by country: top-by-country, last 12 complete months,

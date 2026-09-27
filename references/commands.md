@@ -111,6 +111,7 @@ options:
 
 - Downloads daily pageviews, computes share, yearly change, trend, spikes, seasonality, trust, reader
   countries, supply and ranking, draws the charts, writes `analysis.json` and the CSV files.
+- `files`: `data` (analysis.json), `notes_template`, `charts` (folder with the PNG charts).
 - One run spends at most about 90 seconds on downloads. If `next` contains `wir analyze`, run it again: it
   continues from the cache.
 - `--weights` changes only the given keys (the others keep their defaults) and is saved in the project.

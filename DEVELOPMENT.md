@@ -112,4 +112,4 @@ not trusted by default:
   `ask` and the numbers in the answer.
 
 ## Verification results
-Filled after the evaluation run (see evals/runs/).
+Filled after the evaluation run.

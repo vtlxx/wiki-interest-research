@@ -99,8 +99,8 @@ If a line you need is not in the output and the last caveat says the rest is in 
 the `<!-- facts:` block at the end of the `files.notes_template` file.
 
 ## Rules
-- Never calculate numbers (no ratios like "2.7×", no sums, no averages). Quote numbers only from `say`/`facts`;
-  never from analysis.json, report.md or CSV files (ranking scores are not for the user).
+- Never calculate numbers (no ratios like "2.7×", no sums, no averages). Quote numbers only from `say`/`facts`
+  (or the `<!-- facts:` block of notes.template.md); never from analysis.json, report.md or CSV files.
 - Name the topic exactly as the first `say` line of `wir scope` or `wir status` does; never guess what a QID means.
 - Take article titles from the user or from `ask.options`. If you add a title yourself (`--set` or
   `--add-article`), quote the first sentence the tool returns and list every added article in the Data part.

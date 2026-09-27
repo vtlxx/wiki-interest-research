@@ -43,7 +43,7 @@ $ wir analyze
  "Czech — why this trust level: few views (under 300 a month), percentages are noisy; …", …],
  "facts":{"cs":{"share_per_m":"3.04","growth":"-48%","growth_ci":"-62…-28%","verdict":"declining","trust":"low", …}},
  "caveats":["Pageviews show curiosity, not willingness to pay: …", …],
- "files":{"data":"…/analysis.json","notes_template":"…/notes.template.md","share":"…/charts/share.png", …}}
+ "files":{"data":"…/analysis.json","notes_template":"…/notes.template.md","charts":"…/charts"}}
 
 $ wir verify
 {"state":"ready","say":[…,"Czech: robustness check — the verdict holds; trust is now low.", …]}
