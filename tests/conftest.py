@@ -1,10 +1,17 @@
 import json
+import os
 import sys
 from pathlib import Path
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+
+from wir_core.cache import Cache  # noqa: E402
+from wir_core.fixtures import FixtureTransport  # noqa: E402
+from wir_core.net import HttpClient  # noqa: E402
+
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
 @pytest.fixture(autouse=True)
@@ -39,3 +46,18 @@ def run_cli(capsys):
         return code, json.loads(lines[0])
 
     return _run
+
+
+@pytest.fixture
+def recorded_client(tmp_path, monkeypatch):
+    """HttpClient replaying tests/fixtures/<name>/; with WIR_REFRESH_FIXTURES=1 it records live instead."""
+    monkeypatch.setenv("WIR_TODAY", os.environ.get("WIR_FIXTURE_TODAY", "2026-09-27"))
+
+    def _make(name: str) -> HttpClient:
+        directory = FIXTURES / name
+        if os.environ.get("WIR_REFRESH_FIXTURES") == "1":
+            return HttpClient(Cache(tmp_path / f"{name}.sqlite"), record_dir=directory)
+        return HttpClient(Cache(tmp_path / f"{name}.sqlite"), transport=FixtureTransport([directory]),
+                          min_interval=0)
+
+    return _make
