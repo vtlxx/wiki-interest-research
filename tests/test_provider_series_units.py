@@ -159,3 +159,20 @@ def test_spike_geo_mid_file_failure_caches_nothing(tmp_path, monkeypatch):
     with pytest.raises(WirError):
         p.spike_geo(date(2026, 9, 26), ["Q525"])
     assert cache.get_json("dp:2026-09-26:Q525") is None
+
+
+def test_spike_geo_does_not_cache_a_daily_file_that_is_not_published_yet(tmp_path, monkeypatch):
+    monkeypatch.setenv("WIR_TODAY", "2026-09-27")
+    tsv = "Canada\tCA\ten.wikipedia\t26751\tSun\tQ525\t126\n"
+    published = {"yes": False}
+    calls = []
+
+    def handler(request):
+        calls.append(str(request.url))
+        return httpx.Response(200, text=tsv) if published["yes"] else httpx.Response(404, text="Not Found")
+
+    p, cache = make(tmp_path, handler)
+    assert p.spike_geo(date(2026, 9, 26), ["Q525"]) == {"Q525": []}
+    assert cache.get_json("dp:2026-09-26:Q525", allow_stale=True) is None
+    published["yes"] = True
+    assert len(p.spike_geo(date(2026, 9, 26), ["Q525"])["Q525"]) == 1 and len(calls) == 2

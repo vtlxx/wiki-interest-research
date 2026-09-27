@@ -381,7 +381,8 @@ class WikimediaProvider:
         """Country x project breakdown of one day's traffic to the given Wikidata items, from the
         differential-privacy dataset. Streamed and cached per (day, qid), including empty results, so a
         repeated call for the same day never re-downloads the file, even when it only re-asks for a subset
-        of the QIDs already seen; a QID not seen before for that day still triggers one more download."""
+        of the QIDs already seen; a QID not seen before for that day still triggers one more download.
+        A file that is not published yet (404, no lines) is not cached, so a later call fetches it."""
         if day < DP_START:
             return {q: [] for q in qids}
         cache = self.http.cache
@@ -396,8 +397,16 @@ class WikimediaProvider:
         if missing:
             # If the download breaks mid-file, parse_dp_lines raises before returning and this assignment
             # never completes, so no qid is cached from a partial file (HANDOFF open issue #6).
-            rows = parse_dp_lines(self.http.iter_lines(DP_URL.format(day=day.isoformat())), set(missing))
+            seen = [0]
+
+            def counted(lines):
+                for line in lines:
+                    seen[0] += 1
+                    yield line
+
+            rows = parse_dp_lines(counted(self.http.iter_lines(DP_URL.format(day=day.isoformat()))), set(missing))
             for qid in missing:
                 out[qid] = rows.get(qid, [])
-                cache.put_json(f"dp:{day.isoformat()}:{qid}", [asdict(r) for r in out[qid]], TTL_STATIC)
+                if seen[0]:  # no lines = file not published yet (404): it may appear later, so cache nothing
+                    cache.put_json(f"dp:{day.isoformat()}:{qid}", [asdict(r) for r in out[qid]], TTL_STATIC)
         return out
