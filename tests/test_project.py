@@ -79,7 +79,7 @@ def test_status_is_offline_and_points_to_analyze(wir_env, monkeypatch):
     assert env["facts"] == {"pl": {"status": "missing", "article": "—"},
                             "cs": {"status": "found", "article": "Přerušovaný půst"}}
     assert env["next"] == [{"why": pj.t("uk", "next.analyze"), "cmd": "wir analyze"}]
-    assert "останні 24 повних місяців" in env["say"][0]
+    assert pj.t("uk", "period.months", n=24) in env["say"][0]
 
 
 def test_status_shows_explicit_range_and_stale_analysis(wir_env):
@@ -94,3 +94,11 @@ def test_status_shows_explicit_range_and_stale_analysis(wir_env):
     assert "2024-09 – 2026-08" in env["say"][0]
     assert env["caveats"] == [pj.t("uk", "note.stale")] and env["next"][0]["cmd"] == "wir analyze"
     assert env["files"]["data"].endswith("analysis.json")
+
+
+def test_rel_is_relative_inside_cwd_and_absolute_outside(tmp_path, monkeypatch):
+    inside = tmp_path / "work"
+    inside.mkdir()
+    monkeypatch.chdir(inside)
+    assert pj.rel(inside.resolve() / "wiki-interest-output" / "p") == "wiki-interest-output/p"
+    assert pj.rel(tmp_path / "elsewhere" / "p") == str((tmp_path / "elsewhere" / "p").resolve())

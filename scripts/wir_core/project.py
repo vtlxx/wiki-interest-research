@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
 import shutil
 import unicodedata
@@ -112,10 +111,12 @@ def project_key(qid_or_topic: str, source: str, langs: list[str], period_months:
 
 
 def rel(path: Path) -> str:
+    """Path as the user should see it: relative when inside the working directory, else absolute."""
+    full = Path(path).resolve()
     try:
-        return os.path.relpath(path)
+        return str(full.relative_to(Path.cwd().resolve()))
     except ValueError:
-        return str(path)
+        return str(full)
 
 
 def new_project(*, topic: str, qid: str | None, label: str, description: str, source: str, langs: list[str],
