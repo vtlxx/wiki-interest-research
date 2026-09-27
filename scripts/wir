@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Starts the wiki-interest-research CLI with its locked dependencies via uv.
+set -euo pipefail
+# Resolve symlinks to this script (portable: no readlink -f on older macOS).
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  case "$SOURCE" in /*) ;; *) SOURCE="$DIR/$SOURCE" ;; esac
+done
+DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+if ! command -v uv >/dev/null 2>&1; then
+  printf '%s\n' '{"ok":false,"state":"failed","error":{"code":"UV_MISSING","message":"uv is not installed","fix":"Ask the user to install uv: curl -LsSf https://astral.sh/uv/install.sh | sh (or: brew install uv), then retry."}}'
+  exit 3
+fi
+exec uv run --quiet --frozen --no-dev --project "$DIR/.." python "$DIR/wir.py" "$@"
