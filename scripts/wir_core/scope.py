@@ -170,7 +170,8 @@ def _save_edited(p: pj.Project, *, stale: bool = True) -> None:
 def _create(args, provider, ui: str, notes: list[str]):
     if not args.langs:
         raise WirError("MISSING_LANGS", "no languages given",
-                       fix=f"wir scope {shlex.quote(args.topic)} --langs pl,cs --ui {ui}", exit_code=EXIT_USAGE)
+                       fix=f"Ask the user which Wikipedia languages to compare, then run: wir scope {shlex.quote(args.topic)} "
+                           f"--langs <codes> --ui {ui}", exit_code=EXIT_USAGE)
     langs = _resolve_langs(provider, args.langs.split(","), ui, notes)
     period = pj.parse_period(args.period) if args.period else 24
     date_from = pj.parse_month(args.date_from).strftime("%Y-%m") if args.date_from else None

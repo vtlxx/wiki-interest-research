@@ -226,11 +226,13 @@ def test_period_edit_replaces_an_explicit_range(fake):
     assert t("en", "period.months", n=36) in env["say"][0]
 
 
-def test_missing_langs_fix_is_a_runnable_command(fake):
+def test_missing_langs_fix_asks_the_user_and_gives_a_runnable_command(fake):
     with pytest.raises(WirError) as err:
         scope.run_scope(scope_args('the "best" diet'))
-    args = build_parser().parse_args(shlex.split(err.value.fix)[1:])
-    assert args.topic == 'the "best" diet' and args.langs
+    ask, _, cmd = err.value.fix.partition("run: ")
+    assert "Ask the user" in ask and "pl,cs" not in err.value.fix      # never default to languages nobody named
+    args = build_parser().parse_args(shlex.split(cmd.replace("<codes>", "de"))[1:])
+    assert args.topic == 'the "best" diet' and args.langs == "de"
 
 
 def test_bad_basket_title_offers_add_article_and_keeps_the_main_article(fake):
