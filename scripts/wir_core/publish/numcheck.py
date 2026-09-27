@@ -26,7 +26,8 @@ COMMENT = re.compile(r"<!--.*?-->", re.S)
 ISO_DATE = re.compile(r"(?<!\d)(?P<y>\d{4})-(?P<m>\d{2})(?:-(?P<d>\d{2}))?(?!\d)")
 DMY_DATE = re.compile(r"(?<![\d.])(?P<d>\d{2})\.(?P<m>\d{2})\.\d{4}(?!\d)")
 FIXED = (12, 52, 90)                        # "12 months", "52 weeks", "90% CI"
-UNITS = (1e3, 1e6)                          # "per 1 million", "на 1 тис."
+UNITS = (1e3, 1e6)                          # "per 1 million", "на 1 тис." — only right after per/на/за or "/"
+PER = re.compile(r"(?:\bper|\bна|\bза|/)\s*$", re.I)
 
 
 @dataclass(frozen=True)
@@ -37,6 +38,7 @@ class Token:
     scale: float
     pos: int = field(default=-1, compare=False)
     percent: bool = field(default=False, compare=False)
+    per: bool = field(default=False, compare=False)
 
 
 class Allowed(list):
@@ -58,7 +60,8 @@ def extract(text: str) -> list[Token]:
         value = float(f"{integer}.{frac}" if frac else integer) * scale
         after = text[m.end():]
         percent = bool(PERCENT.match(after) or RANGE_TO_PERCENT.match(after)) and not CI_LABEL.match(after)
-        tokens.append(Token(m.group(0).strip(), value, len(frac), scale, m.start("int"), percent))
+        per = bool(PER.search(text[:m.start()]))
+        tokens.append(Token(m.group(0).strip(), value, len(frac), scale, m.start("int"), percent, per))
     return tokens
 
 
@@ -100,7 +103,7 @@ def allowed_values(analysis: dict, summary: dict) -> Allowed:
     values.update(range(start.year, end.year + 1))
     proj = analysis["project"]
     months = proj.get("period_months") or 24
-    values.update({months, len(proj["langs"]), *FIXED, *UNITS})
+    values.update({months, len(proj["langs"]), *FIXED})
     if months % 12 == 0:
         values.add(months // 12)
     values.update(len(res.get("titles", [])) for res in analysis["langs"].values())
@@ -121,6 +124,8 @@ def _candidates(token: Token, allowed: list[float]) -> list[float]:
 
 def _ok(token: Token, allowed: list[float]) -> bool:
     tolerance = 0.5 * 10 ** (-token.decimals) * token.scale + 1e-9
+    if token.per and any(abs(token.value - u) <= tolerance for u in UNITS):
+        return True
     return any(abs(token.value - a) <= tolerance for a in _candidates(token, allowed))
 
 
@@ -130,7 +135,13 @@ def check(text: str, allowed: list[float]) -> list[Token]:
 
 
 def nearest_values(token: Token, allowed: list[float], k: int = 3) -> list[float]:
-    return sorted(_candidates(token, allowed), key=lambda a: abs(a - token.value))[:k]
+    """Closest values the token could be replaced with; a year is suggested only for something that looks like one."""
+    def is_year(v: float) -> bool:
+        return 1900 <= v <= 2100 and float(v).is_integer()
+
+    looks_like_year = token.scale == 1 and is_year(token.value)
+    pool = [a for a in _candidates(token, allowed) if looks_like_year or not is_year(a)]
+    return sorted(pool, key=lambda a: abs(a - token.value))[:k]
 
 
 def nearest(token: Token, allowed: list[float]) -> float | None:

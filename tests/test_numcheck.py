@@ -74,6 +74,7 @@ def test_allowed_texts_pass(text):
     ("Interest fell 90%, 12%, 24% and 52%.", [90, 12, 24, 52]),     # counts are not percentages
     ("Only 2 languages, 2% of views.", []),                        # 2% is in the caveats
     ("About 1.5 million readers.", [1_500_000]),
+    ("About 1 000 readers and 1 million views.", [1000, 1_000_000]),   # units only after per/на
 ])
 def test_invented_numbers_rejected(text, bad):
     assert [t.value for t in check(text, allowed_values(analysis(), summary()))] == bad
@@ -89,3 +90,5 @@ def test_nearest():
     assert nearest(token, []) is None
     allowed = allowed_values(analysis(), summary())
     assert nearest_values(extract("fell 46%")[0], allowed) == [47, 38, 55]   # percentages only
+    assert not {2024, 2025, 2026} & set(nearest_values(extract("1.5 million")[0], allowed))
+    assert nearest_values(extract("in 2027")[0], allowed, k=1) == [2026]
