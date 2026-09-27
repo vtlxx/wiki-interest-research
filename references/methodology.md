@@ -76,7 +76,7 @@ counts once). A stand-in article caps trust at **medium**. At most 5 reasons are
 | `low_volume` | minor | median monthly views < 300 |
 | `history_lt_24` | minor | 12–23 months of data |
 | `spiky` | minor | spike share 20–50% |
-| `verify_weakens` | minor | `wir verify`: some variants show no clear direction, or show one when G has none |
+| `verify_weakens` | minor | `wir verify`: spike-free G has no clear direction or a variant points the other way; or G has none and a variant has one |
 | `data_incident` | minor | a high-severity incident overlaps the 104 weeks of G |
 | `redirect_coverage`, `dominant_redirect` | minor (one rule) | coverage < 90%, or one redirect > 30% |
 | `young_article`, `renamed` | minor (one rule) | created shortly before the window, or renamed inside it |
@@ -88,8 +88,9 @@ counts once). A stand-in article caps trust at **medium**. At most 5 reasons are
 Four variants from the saved data: spike-free G; half-year G (last 26 weeks vs the same 26 weeks a year
 earlier); trend over the last 24 months; trend over the last 36 months (if available). Each gives +1, −1 or
 0 (G: growing/declining; trend: sign when significant — with ≥ 4 languages by the Benjamini–Hochberg
-q-value). If G has a direction: any opposite variant →
-**flips**, any 0 → **weakens**, else **holds**. If G has none: all 0 → holds, else weakens. Trust and
+q-value). If G has a direction: any opposite variant → **flips**; spike-free G at 0, or any variant whose
+estimate points the other way even without significance → **weakens**; else **holds** (a same-sign half-year
+or trend that is not significant does not weaken). If G has none: all 0 → holds, else weakens. Trust and
 ranking are recomputed.
 
 ## Supply (is there content in that language?)

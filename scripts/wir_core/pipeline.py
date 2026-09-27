@@ -479,12 +479,20 @@ def direction_of_trend(tr: st.Trend | None, q: float | None = None) -> int:
     return 1 if tr.pct_per_year > 0 else -1
 
 
-def verify_outcome(main_dir: int, dirs: list[int]) -> str:
+def sign_of(v: st.Growth | st.Trend | None) -> int:
+    """Sign of a variant's point estimate, significant or not (0 when there is no estimate)."""
+    x = v.g if isinstance(v, st.Growth) else v.pct_per_year if v else 0.0
+    return (x > 0) - (x < 0)
+
+
+def verify_outcome(main_dir: int, dirs: list[int], signs: list[int]) -> str:
+    """dirs: significant direction of each variant, spike-free G first; signs: sign of each point estimate.
+    A variant without a clear direction weakens a verdict only when it is spike-free G or points the other way."""
     if main_dir == 0:
         return "holds" if all(d == 0 for d in dirs) else "weakens"
     if any(d == -main_dir for d in dirs):
         return "flips"
-    if any(d == 0 for d in dirs):
+    if dirs[0] == 0 or any(s == -main_dir for s in signs):
         return "weakens"
     return "holds"
 
@@ -532,11 +540,10 @@ def run_verify(args) -> dict:
     for lang, v in variants.items():
         res = analysis["langs"][lang]
         main_dir = {"growing": 1, "declining": -1}.get((res.get("growth") or {}).get("verdict"), 0)
-        dirs = [direction_of_growth(v["despiked"]), direction_of_growth(v["half_year"]),
-                direction_of_trend(v["trend_24m"], qvals.get((lang, "trend_24m")))]
-        if v["trend_36m"]:
-            dirs.append(direction_of_trend(v["trend_36m"], qvals.get((lang, "trend_36m"))))
-        outcome = verify_outcome(main_dir, dirs)
+        keys = ["despiked", "half_year", "trend_24m"] + (["trend_36m"] if v["trend_36m"] else [])
+        dirs = [direction_of_growth(v[k]) if k in ("despiked", "half_year")
+                else direction_of_trend(v[k], qvals.get((lang, k))) for k in keys]
+        outcome = verify_outcome(main_dir, dirs, [sign_of(v[k]) for k in keys])
         res["verify"] = {"outcome": outcome, "variants": {
             "despiked": _growth_dict(v["despiked"]), "half_year": _growth_dict(v["half_year"]),
             "trend_24m": {**asdict(v["trend_24m"]), "q": qvals.get((lang, "trend_24m"))} if v["trend_24m"] else None,
