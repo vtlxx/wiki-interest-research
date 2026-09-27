@@ -51,7 +51,11 @@ def _monthly(res: dict) -> pd.Series:
 def _footer(fig, analysis: dict, ui: str) -> None:
     prov = analysis.get("provenance") or {}
     fetched = (prov.get("fetched_at") or prov.get("data_through") or "")[:10]
-    fig.text(0.0, 0.0, t(ui, "chart.source", date=fetched), fontsize=6.5, color=MUTED, ha="left", va="top")
+    # Place it under everything already drawn (tick labels of short or rotated axes reach below y=0).
+    renderer = fig.canvas.get_renderer()
+    boxes = [ax.get_tightbbox(renderer) for ax in fig.axes if ax.axison]
+    x0, y0 = fig.transFigure.inverted().transform((min(b.x0 for b in boxes), min(b.y0 for b in boxes)))
+    fig.text(x0, y0 - 0.02, t(ui, "chart.source", date=fetched), fontsize=6.5, color=MUTED, ha="left", va="top")
 
 
 def _save(fig, path: Path) -> Path:
@@ -162,8 +166,11 @@ def share_chart(analysis: dict, out: Path, ui: str) -> Path:
                     flags[k] = flags.get(k, False) or v
                 ax.tick_params(axis="x", labelrotation=30, labelsize=7)
                 ax.tick_params(axis="y", labelsize=7)
-            for ax in list(axes.flat)[len(langs):]:
-                ax.axis("off")
+            for i, ax in enumerate(axes.flat):
+                if i >= len(langs):
+                    ax.axis("off")
+                elif i + cols >= len(langs):                   # nothing below it: it needs its own dates
+                    ax.xaxis.set_tick_params(labelbottom=True)
             fig.supylabel(t(ui, "chart.share.y"), fontsize=8, color=INK)
             fig.suptitle(t(ui, "chart.share.title"), fontsize=10, fontweight="bold", x=0.01, ha="left")
             fig.tight_layout()
@@ -245,7 +252,7 @@ def countries_chart(analysis: dict, out: Path, ui: str) -> Path | None:
         fig, ax = plt.subplots(figsize=(WIDE, 0.45 * len(langs) + 1.1))
         ys = list(range(len(langs)))[::-1]
         for y, lang in zip(ys, langs):
-            left = 0.0
+            left, unlabelled = 0.0, []
             for i, (code, share) in enumerate(analysis["langs"][lang]["countries"][:5]):
                 width = share * 100
                 ax.barh(y, width, left=left, color=COUNTRY_RAMP[i], height=0.6, edgecolor="white", lw=1.2)
@@ -254,7 +261,12 @@ def countries_chart(analysis: dict, out: Path, ui: str) -> Path | None:
                     ax.text(left + width / 2, y, f"{code} {width:.0f}%", ha="center", va="center", fontsize=7, color=ink)
                 elif width >= 3:
                     ax.text(left + width / 2, y, code, ha="center", va="center", fontsize=6.5, color=ink)
+                else:
+                    unlabelled.append(f"{code} {width:.0f}%" if width >= 0.5 else f"{code} <1%")
                 left += width
+            if unlabelled:
+                ax.text(1.02, y, " · ".join(unlabelled), transform=ax.get_yaxis_transform(), va="center",
+                        fontsize=7, color=INK)
             rest = max(0.0, 100 - left)
             ax.barh(y, rest, left=left, color=OTHER_COLOR, height=0.6, edgecolor="white", lw=1.2)
             if rest >= 12:
