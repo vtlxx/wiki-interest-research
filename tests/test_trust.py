@@ -48,3 +48,13 @@ def test_history_between_12_and_24_is_minor():
 
 def test_verify_weakens_is_minor():
     assert codes(assess(base(verify_outcome="weakens"))) == ["verify_weakens"]
+
+
+def test_redirect_pair_counts_as_one_deduction():
+    t = assess(base(redirect_coverage=0.8, dominant_redirect=True))
+    assert t.level == "medium" and set(codes(t)) == {"redirect_coverage", "dominant_redirect"}
+
+
+def test_young_and_renamed_pair_counts_as_one_deduction():
+    t = assess(base(young_article=True, renamed_in_window=True))
+    assert t.level == "medium" and set(codes(t)) == {"young_article", "renamed"}
