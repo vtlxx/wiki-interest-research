@@ -103,3 +103,8 @@ def test_history_months():
 def test_renamed_within():
     moves = [Move(date(2026, 2, 25), "Twitter", "X (social network)"), Move(date(2010, 1, 1), "A", "B")]
     assert sr.renamed_within(moves, date(2024, 9, 1), date(2026, 8, 31)) == [moves[0]]
+
+
+def test_first_full_month():
+    assert sr.first_full_month(date(2024, 3, 1)) == date(2024, 3, 1)
+    assert sr.first_full_month(date(2024, 12, 2)) == date(2025, 1, 1)

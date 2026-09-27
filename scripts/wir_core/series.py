@@ -31,6 +31,11 @@ def add_months(d: date, n: int) -> date:
     return date(y, m + 1, 1)
 
 
+def first_full_month(d: date) -> date:
+    """First day of the first calendar month that starts on or after `d`."""
+    return d if d.day == 1 else add_months(d.replace(day=1), 1)
+
+
 def _month_end(first: date) -> date:
     return add_months(first, 1) - timedelta(days=1)
 
@@ -55,7 +60,7 @@ def young_start(created: date | None, start: date) -> tuple[date, bool]:
     if created is None:
         return start, False
     ready = created + timedelta(days=90)
-    first_full = ready if ready.day == 1 else add_months(ready.replace(day=1), 1)
+    first_full = first_full_month(ready)
     if first_full <= start:
         return start, False
     return first_full, True
@@ -120,7 +125,7 @@ def history_months(topic_daily: pd.Series, created: date | None, end: date) -> i
     first = created or (nonzero.index[0].date() if len(nonzero) else None)
     if first is None:
         return 0
-    first_full = first if first.day == 1 else add_months(first.replace(day=1), 1)
+    first_full = first_full_month(first)
     end_first, _ = month_bounds(end)
     return max(0, (end_first.year - first_full.year) * 12 + end_first.month - first_full.month + 1)
 
