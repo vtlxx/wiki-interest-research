@@ -107,7 +107,7 @@ def test_trend_seasonal_method():
 
 @pytest.mark.parametrize("phase", [0, 3, 6, 9])
 def test_trend_seasonal_flat_is_phase_invariant(phase):
-    idx = pd.date_range(end="2026-08-01", periods=48, freq="MS")
+    idx = pd.date_range(end="2026-08-01", periods=24, freq="MS")
     vals = 100 * (1 + 0.5 * np.cos(2 * np.pi * (idx.month.values - 1 - phase) / 12))
     tr = st.trend(pd.Series(vals, index=idx), seasonal=True)
     assert abs(tr.pct_per_year) < 0.02
@@ -120,7 +120,7 @@ def test_trend_seasonal_with_growth_recovers_pct_per_year():
     vals = (50 * (1.2 ** (t / 12)) * (1 + 0.5 * np.cos(2 * np.pi * idx.month.values / 12))
             * np.exp(rng.normal(0, 0.03, 48)))
     tr = st.trend(pd.Series(vals, index=idx), seasonal=True)
-    assert tr.pct_per_year == pytest.approx(0.2, abs=0.05)
+    assert tr.pct_per_year == pytest.approx(0.2, abs=0.03)
     assert tr.lo < tr.pct_per_year < tr.hi and tr.lo < 0.2 < tr.hi
     assert tr.method == "seasonal-mk"
 
