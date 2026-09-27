@@ -1,0 +1,273 @@
+"""Wikimedia projects (Wikipedia, Wiktionary, Wikivoyage): metadata via MediaWiki/Wikidata APIs."""
+from __future__ import annotations
+
+import html
+import json
+import re
+from dataclasses import replace
+from datetime import date, timedelta
+from urllib.parse import urlsplit
+
+from ..cache import TTL_404, TTL_META, TTL_OLD
+from ..config import assets_dir, today_utc
+from ..errors import EXIT_NETWORK, EXIT_NODATA, EXIT_USAGE, WirError
+from ..net import HttpClient, encode_title
+from .base import (DISAMBIGUATION, FOUND, MISSING, SECTION, VIA_REDIRECT, Candidate, Move, PageInfo,
+                   Redirect)
+
+WIKIDATA_API = "https://www.wikidata.org/w/api.php"
+META_API = "https://meta.wikimedia.org/w/api.php"
+SITE_CODE = {"wikipedia": "wiki", "wiktionary": "wiktionary", "wikivoyage": "wikivoyage"}
+MAX_PV_REQUESTS = 6          # prop=pageviews continuation budget per call of views_60d
+MAX_MOVE_LOOKUPS = 30        # move-log lookups per article
+_PUBLICATION = re.compile(r"\b(scholarly|scientific|journal) article\b|\bthesis\b|\bpreprint\b", re.I)
+_TAG = re.compile(r"<[^>]+>")
+
+
+def _chunks(items: list, size: int):
+    for i in range(0, len(items), size):
+        yield items[i:i + size]
+
+
+def _check(data: dict | None) -> dict:
+    if data is None:
+        raise WirError("MEDIAWIKI_ERROR", "empty answer from the MediaWiki API",
+                       fix="Run the same command again.", exit_code=EXIT_NETWORK)
+    if "error" in data:
+        err = data["error"]
+        raise WirError("MEDIAWIKI_ERROR", f"{err.get('code')}: {err.get('info')}",
+                       fix="Check the language code and the title.", exit_code=EXIT_USAGE)
+    return data
+
+
+def _clean(text: str | None) -> str | None:
+    if not text:
+        return None
+    text = html.unescape(_TAG.sub("", text)).strip()
+    return text[:300] or None
+
+
+class WikimediaProvider:
+    def __init__(self, source: str, http: HttpClient):
+        if source not in SITE_CODE:
+            raise WirError("UNKNOWN_SOURCE", f"unknown source '{source}'",
+                           fix="Use --source wikipedia, wiktionary or wikivoyage.")
+        self.source = source
+        self.http = http
+        base = {"project_totals", "redirects", "moves", "geo", "spike_geo"}
+        self.capabilities = frozenset(base | ({"wikidata"} if source != "wiktionary" else set()))
+        self._sites_cache: dict[str, dict] | None = None
+        self._created_cache: dict[tuple[str, str], date | None] = {}
+
+    # ---- languages ---------------------------------------------------------------------------
+    def _sites(self) -> dict[str, dict]:
+        if self._sites_cache is None:
+            data = _check(self.http.get_json(META_API, {"action": "sitematrix", "smtype": "language",
+                                                        "format": "json"}, ttl=TTL_OLD))
+            sites: dict[str, dict] = {}
+            for key, entry in data["sitematrix"].items():
+                if not key.isdigit():
+                    continue
+                for site in entry.get("site", []):
+                    if site.get("code") != SITE_CODE[self.source] or "closed" in site:
+                        continue
+                    lang = urlsplit(site["url"]).netloc.split(".")[0]
+                    sites[lang] = {"dbname": site["dbname"],
+                                   "name": entry.get("localname") or entry.get("name") or lang}
+            self._sites_cache = sites
+        return self._sites_cache
+
+    def resolve_lang(self, code: str) -> tuple[str, str | None]:
+        typed = code.strip().lower()
+        sites = self._sites()
+        if typed in sites:
+            return typed, None
+        aliases = json.loads((assets_dir() / "language_aliases.json").read_text())
+        alias = aliases.get(typed)
+        if alias and alias in sites:
+            return alias, f"'{code}' is not a {self.source} language code; using '{alias}' ({sites[alias]['name']})."
+        raise WirError("UNKNOWN_LANG", f"'{code}' is not an open {self.source} language edition",
+                       fix="Use wiki language codes such as uk, pl, cs, en, de, fr, es "
+                           "(list: https://meta.wikimedia.org/wiki/List_of_Wikipedias).")
+
+    def lang_name(self, lang: str) -> str:
+        return self._sites().get(lang, {}).get("name", lang)
+
+    def project_domain(self, lang: str) -> str:
+        return f"{lang}.{self.source}.org"
+
+    def aqs_project(self, lang: str) -> str:
+        return f"{lang}.{self.source}"
+
+    def article_url(self, lang: str, title: str) -> str:
+        return f"https://{self.project_domain(lang)}/wiki/{encode_title(title)}"
+
+    def _api(self, lang: str, params: dict, ttl: int = TTL_META) -> dict:
+        url = f"https://{self.project_domain(lang)}/w/api.php"
+        return _check(self.http.get_json(url, {**params, "format": "json", "formatversion": 2}, ttl=ttl))
+
+    def _wikidata(self, params: dict) -> dict:
+        return _check(self.http.get_json(WIKIDATA_API, {**params, "format": "json"}, ttl=TTL_META))
+
+    # ---- Wikidata ----------------------------------------------------------------------------
+    def _sitelink_counts(self, qids: list[str]) -> dict[str, int]:
+        dbnames = {site["dbname"] for site in self._sites().values()}
+        counts: dict[str, int] = {}
+        for chunk in _chunks(qids, 50):
+            data = self._wikidata({"action": "wbgetentities", "ids": "|".join(chunk), "props": "sitelinks"})
+            for qid, ent in data.get("entities", {}).items():
+                counts[qid] = sum(1 for db in ent.get("sitelinks", {}) if db in dbnames)
+        return counts
+
+    def search(self, text: str, lang: str, limit: int = 7) -> list[Candidate]:
+        found: dict[str, dict] = {}
+        needle = text.strip().casefold()
+        for search_lang in dict.fromkeys([lang, "en"]):
+            data = self._wikidata({"action": "wbsearchentities", "search": text.strip(), "language": search_lang,
+                                   "uselang": search_lang, "type": "item", "limit": limit})
+            for hit in data.get("search", []):
+                exact = hit.get("match", {}).get("text", "").casefold() == needle
+                prev = found.get(hit["id"])
+                found[hit["id"]] = {
+                    "label": prev["label"] if prev else hit.get("label", hit["id"]),
+                    "description": (prev["description"] if prev else "") or hit.get("description", ""),
+                    "exact": exact or bool(prev and prev["exact"]),
+                }
+        if not found:
+            return []
+        counts = self._sitelink_counts(list(found))
+        cands = [Candidate(q, v["label"], v["description"], counts.get(q, 0), v["exact"]) for q, v in found.items()]
+        cands = [c for c in cands if c.sitelinks > 0 and not _PUBLICATION.search(c.description)]
+        return sorted(cands, key=lambda c: (not c.exact, -c.sitelinks))[:limit]
+
+    def entity(self, qid: str, ui: str) -> Candidate:
+        data = self._wikidata({"action": "wbgetentities", "ids": qid, "props": "labels|descriptions|sitelinks",
+                               "languages": "|".join(dict.fromkeys([ui, "en"]))})
+        ent = data.get("entities", {}).get(qid)
+        if not ent or "missing" in ent:
+            raise WirError("UNKNOWN_QID", f"Wikidata item {qid} does not exist",
+                           fix="Search by topic text instead of a QID.", exit_code=EXIT_NODATA)
+        labels, descs = ent.get("labels", {}), ent.get("descriptions", {})
+        pick = lambda d: (d.get(ui) or d.get("en") or {}).get("value", "")  # noqa: E731
+        dbnames = {site["dbname"] for site in self._sites().values()}
+        return Candidate(qid, pick(labels) or qid, pick(descs),
+                         sum(1 for db in ent.get("sitelinks", {}) if db in dbnames), True)
+
+    def links(self, qid: str, langs: list[str]) -> dict[str, tuple[str | None, list[str]]]:
+        data = self._wikidata({"action": "wbgetentities", "ids": qid, "props": "sitelinks"})
+        ent = data.get("entities", {}).get(qid, {})
+        if "missing" in ent:
+            raise WirError("UNKNOWN_QID", f"Wikidata item {qid} does not exist", exit_code=EXIT_NODATA)
+        sitelinks, sites = ent.get("sitelinks", {}), self._sites()
+        out: dict[str, tuple[str | None, list[str]]] = {}
+        for lang in langs:
+            link = sitelinks.get(sites[lang]["dbname"]) if lang in sites else None
+            out[lang] = (link["title"], list(link.get("badges", []))) if link else (None, [])
+        return out
+
+    # ---- MediaWiki page metadata -------------------------------------------------------------
+    def _created(self, lang: str, title: str) -> date | None:
+        key = (lang, title)
+        if key not in self._created_cache:
+            data = self._api(lang, {"action": "query", "titles": title, "prop": "revisions", "rvlimit": 1,
+                                    "rvdir": "newer", "rvprop": "timestamp"}, ttl=TTL_OLD)
+            pages = data.get("query", {}).get("pages", [])
+            revs = pages[0].get("revisions", []) if pages else []
+            self._created_cache[key] = date.fromisoformat(revs[0]["timestamp"][:10]) if revs else None
+        return self._created_cache[key]
+
+    def inspect(self, lang: str, titles: list[str]) -> dict[str, PageInfo]:
+        out: dict[str, PageInfo] = {}
+        for chunk in _chunks(list(dict.fromkeys(titles)), 20):
+            data = self._api(lang, {"action": "query", "titles": "|".join(chunk), "redirects": 1,
+                                    "prop": "info|pageprops|extracts", "ppprop": "disambiguation|wikibase_item",
+                                    "exintro": 1, "explaintext": 1, "exsentences": 1, "exlimit": 20})
+            q = data.get("query", {})
+            norm = {n["from"]: n["to"] for n in q.get("normalized", [])}
+            redirs = {r["from"]: r for r in q.get("redirects", [])}
+            pages = {p["title"]: p for p in q.get("pages", [])}
+            for requested in chunk:
+                name, fragment, was_redirect = norm.get(requested, requested), None, False
+                for _ in range(3):  # follow short redirect chains
+                    r = redirs.get(name)
+                    if not r:
+                        break
+                    was_redirect, fragment, name = True, r.get("tofragment") or fragment, r["to"]
+                page = pages.get(name)
+                if page is None or page.get("missing") or page.get("invalid") or page.get("ns", 0) != 0:
+                    out[requested] = PageInfo(lang, requested, None, MISSING)
+                    continue
+                props = page.get("pageprops", {})
+                if "disambiguation" in props:
+                    status = DISAMBIGUATION
+                elif was_redirect and fragment:
+                    status = SECTION
+                elif was_redirect:
+                    status = VIA_REDIRECT
+                else:
+                    status = FOUND
+                out[requested] = PageInfo(lang, requested, page["title"], status, fragment, page.get("length"),
+                                          None, _clean(page.get("extract")), props.get("wikibase_item"))
+        for requested, info in list(out.items()):
+            if info.title and info.status != DISAMBIGUATION:
+                out[requested] = replace(info, created=self._created(lang, info.title))
+        return out
+
+    def search_in_wiki(self, lang: str, text: str, limit: int = 5) -> list[tuple[str, str]]:
+        data = self._api(lang, {"action": "query", "list": "search", "srsearch": text, "srlimit": limit,
+                                "srnamespace": 0, "srprop": "snippet"})
+        return [(hit["title"], _clean(hit.get("snippet")) or "") for hit in data.get("query", {}).get("search", [])]
+
+    def views_60d(self, lang: str, titles: list[str]) -> dict[str, int | None]:
+        result: dict[str, int | None] = {t: None for t in titles}
+        requests = 0
+        for chunk in _chunks(list(dict.fromkeys(titles)), 50):
+            cont: dict = {}
+            while requests < MAX_PV_REQUESTS:
+                data = self._api(lang, {"action": "query", "titles": "|".join(chunk), "prop": "pageviews",
+                                        "pvipdays": 60, **cont})
+                requests += 1
+                q = data.get("query", {})
+                back = {n["to"]: n["from"] for n in q.get("normalized", [])}
+                for page in q.get("pages", []):
+                    views = page.get("pageviews")
+                    title = back.get(page.get("title"), page.get("title"))
+                    if views is not None and title in result:
+                        result[title] = int(sum(v or 0 for v in views.values()))
+                if "continue" not in data:
+                    break
+                cont = data["continue"]
+        return result
+
+    def redirects(self, lang: str, title: str) -> list[Redirect]:
+        items: list[tuple[str, str | None]] = []
+        cont: dict = {}
+        for _ in range(3):
+            data = self._api(lang, {"action": "query", "titles": title, "prop": "redirects",
+                                    "rdprop": "title|fragment", "rdlimit": "max", "rdnamespace": 0, **cont})
+            for page in data.get("query", {}).get("pages", []):
+                items.extend((r["title"], r.get("fragment")) for r in page.get("redirects", []))
+            if "continue" not in data:
+                break
+            cont = data["continue"]
+        views = self.views_60d(lang, [t for t, _ in items]) if items else {}
+        return [Redirect(t, views.get(t), f) for t, f in items]
+
+    def moves(self, lang: str, titles: list[str]) -> list[Move]:
+        out: set[Move] = set()
+        for title in list(dict.fromkeys(titles))[:MAX_MOVE_LOOKUPS]:
+            data = self._api(lang, {"action": "query", "list": "logevents", "letype": "move", "letitle": title,
+                                    "lelimit": 50, "leprop": "title|details|timestamp"})
+            for ev in data.get("query", {}).get("logevents", []):
+                target = ev.get("params", {}).get("target_title")
+                if target and ev.get("title"):
+                    out.add(Move(date.fromisoformat(ev["timestamp"][:10]), ev["title"], target))
+        return sorted(out, key=lambda m: (m.when, m.source))
+
+    def edits_on(self, lang: str, title: str, day: date) -> int:
+        ttl = TTL_OLD if day < today_utc() - timedelta(days=2) else TTL_404
+        data = self._api(lang, {"action": "query", "titles": title, "prop": "revisions", "rvprop": "timestamp",
+                                "rvlimit": 500, "rvstart": f"{day.isoformat()}T23:59:59Z",
+                                "rvend": f"{day.isoformat()}T00:00:00Z"}, ttl=ttl)
+        pages = data.get("query", {}).get("pages", [])
+        return len(pages[0].get("revisions", [])) if pages else 0
