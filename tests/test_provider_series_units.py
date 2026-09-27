@@ -172,7 +172,9 @@ def test_spike_geo_does_not_cache_a_daily_file_that_is_not_published_yet(tmp_pat
         return httpx.Response(200, text=tsv) if published["yes"] else httpx.Response(404, text="Not Found")
 
     p, cache = make(tmp_path, handler)
-    assert p.spike_geo(date(2026, 9, 26), ["Q525"]) == {"Q525": []}
+    with pytest.raises(WirError) as err:
+        p.spike_geo(date(2026, 9, 26), ["Q525"])
+    assert err.value.code == "NOT_PUBLISHED"
     assert cache.get_json("dp:2026-09-26:Q525", allow_stale=True) is None
     published["yes"] = True
     assert len(p.spike_geo(date(2026, 9, 26), ["Q525"])["Q525"]) == 1 and len(calls) == 2

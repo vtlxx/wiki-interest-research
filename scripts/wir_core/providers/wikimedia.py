@@ -382,7 +382,7 @@ class WikimediaProvider:
         differential-privacy dataset. Streamed and cached per (day, qid), including empty results, so a
         repeated call for the same day never re-downloads the file, even when it only re-asks for a subset
         of the QIDs already seen; a QID not seen before for that day still triggers one more download.
-        A file that is not published yet (404, no lines) is not cached, so a later call fetches it."""
+        A file that is not published yet (404, no lines) is not cached and raises NOT_PUBLISHED (exit 5)."""
         if day < DP_START:
             return {q: [] for q in qids}
         cache = self.http.cache
@@ -405,8 +405,10 @@ class WikimediaProvider:
                     yield line
 
             rows = parse_dp_lines(counted(self.http.iter_lines(DP_URL.format(day=day.isoformat()))), set(missing))
+            if not seen[0]:  # no lines = file not published yet (404): it may appear later, so cache nothing
+                raise WirError("NOT_PUBLISHED", f"the country dataset for {day.isoformat()} is not published yet",
+                               fix="Run the same command again in a day or two.", exit_code=EXIT_NODATA)
             for qid in missing:
                 out[qid] = rows.get(qid, [])
-                if seen[0]:  # no lines = file not published yet (404): it may appear later, so cache nothing
-                    cache.put_json(f"dp:{day.isoformat()}:{qid}", [asdict(r) for r in out[qid]], TTL_STATIC)
+                cache.put_json(f"dp:{day.isoformat()}:{qid}", [asdict(r) for r in out[qid]], TTL_STATIC)
         return out
