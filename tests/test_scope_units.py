@@ -278,3 +278,15 @@ def test_add_and_drop_lang_accept_comma_and_space_separated_lists(fake):
     assert pj.load(None).langs == ["cs", "de", "fr", "it", "sk"]
     scope.run_scope(scope_args(drop_lang=["de, fr", "it"]))
     assert pj.load(None).langs == ["cs", "sk"] and set(pj.load(None).entries) == {"cs", "sk"}
+
+
+def test_missing_langs_fix_keeps_source_and_period(fake):
+    with pytest.raises(WirError) as err:
+        scope.run_scope(scope_args("apple", source="wiktionary", period="5y", date_from=None))
+    cmd = err.value.fix.partition("run: ")[2].replace("<codes>", "en")
+    args = build_parser().parse_args(shlex.split(cmd)[1:])
+    assert (args.source, args.period, args.langs) == ("wiktionary", "5y", "en")
+    with pytest.raises(WirError) as err:
+        scope.run_scope(scope_args("apple", date_from="2023-01", date_to="2025-12"))
+    args = build_parser().parse_args(shlex.split(err.value.fix.partition("run: ")[2].replace("<codes>", "en"))[1:])
+    assert (args.date_from, args.date_to) == ("2023-01", "2025-12")
