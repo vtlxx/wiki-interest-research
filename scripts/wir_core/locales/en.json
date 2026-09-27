@@ -30,7 +30,7 @@
   "reason.disambiguation": "it is a disambiguation page",
   "note.interpreted": "Interpreted “{topic}” as: {label} — {description} ({qid}).",
   "note.lang_alias": "“{typed}” is not a wiki language code; using “{lang}” ({name}).",
-  "note.set_checked": "{lang}: “{title}” checked — it begins: “{extract}”. Confirm with the user that this is the intended topic.",
+  "note.set_checked": "{lang}: “{title}” checked — it begins: “{extract}”. Tell the user this first sentence.",
   "note.section": "{lang}: the numbers describe the broader article “{title}”, not only this topic.",
   "note.proxy": "{lang}: “{title}” is a stand-in article; trust will be capped at medium.",
   "note.stale": "The project changed after the last analysis — run the analysis again.",
