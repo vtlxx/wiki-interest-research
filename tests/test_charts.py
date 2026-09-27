@@ -1,8 +1,9 @@
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
-from wir_core.charts import render_all
+from wir_core.charts import _incident_spans, _log_scale, _moves, _source_line, render_all
 
 PNG = b"\x89PNG\r\n\x1a\n"
 
@@ -76,3 +77,49 @@ def test_missing_shares_and_growth(tmp_path, n_langs):
         block["growth"] = None
     files = render_all(a, tmp_path, "uk")
     assert {"share", "index"} <= set(files) and "growth" not in files
+
+
+def test_log_scale_only_when_levels_differ_more_than_tenfold():
+    assert _log_scale([pd.Series([1.0, 2.0]), pd.Series([30.0, 40.0])])
+    assert not _log_scale([pd.Series([5.0, 6.0]), pd.Series([30.0, 40.0])])
+    assert not _log_scale([pd.Series([0.0, 0.0]), pd.Series([30.0, 40.0])])   # no positive level: nothing to compare
+
+
+def test_incident_spans_clipped_to_window_and_low_severity_skipped():
+    a = analysis(n_langs=1)
+    a["window"] = {"start": "2025-11-10", "end": "2026-08-31", "last_day": "2026-09-26"}
+    a["langs"]["uk"]["incidents"] = ["bots_2025_11", "bots_2025_12_2026_03"]      # high, low
+    assert _incident_spans(a, ["uk"]) == [(pd.Timestamp("2025-11-10"), pd.Timestamp("2025-12-01"))]
+
+
+def test_moves_outside_window_dropped():
+    a = analysis(n_langs=1)
+    a["langs"]["uk"]["moves"] = [{"when": "2026-02-25", "source": "A", "target": "B"},
+                                 {"when": "2019-01-01", "source": "C", "target": "A"}]
+    assert _moves(a, ["uk"]) == [pd.Timestamp("2026-02-25")]
+
+
+def test_source_line_says_fetch_date_or_data_date():
+    a = analysis()
+    assert "fetched 2026-09-27" in _source_line(a, "en")
+    a["provenance"] = {"fetched_at": None, "data_through": "2026-09-26"}
+    assert "data through 2026-09-26" in _source_line(a, "en")
+    a["provenance"] = {}
+    assert _source_line(a, "en").endswith("agent=user")
+
+
+def test_log_scale_and_long_window_render(tmp_path):
+    a = analysis(n_langs=3)
+    a["window"]["start"] = "2016-09-01"                                       # ten years of ticks
+    a["langs"]["pl"]["monthly"] = [dict(r, share=r["share"] * 40) for r in a["langs"]["pl"]["monthly"]]
+    a["langs"]["uk"]["monthly"][3]["share"] = 0.0                             # zero on a log axis
+    assert render_all(a, tmp_path, "en")["share"].exists()
+
+
+def test_stale_optional_chart_removed(tmp_path):
+    render_all(analysis(), tmp_path, "en")
+    a = analysis()
+    for lang in ("uk", "pl"):
+        a["langs"][lang]["seasonality"] = None
+    files = render_all(a, tmp_path, "en")
+    assert "season" not in files and not (tmp_path / "season.png").exists()
