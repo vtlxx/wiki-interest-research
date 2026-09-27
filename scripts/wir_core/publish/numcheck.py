@@ -42,19 +42,19 @@ def extract(text: str) -> list[Token]:
     return tokens
 
 
-def _strings(obj) -> list[str]:
+def strings(obj) -> list[str]:
     if isinstance(obj, str):
         return [obj]
     if isinstance(obj, dict):
-        return [s for v in obj.values() for s in _strings(v)]
+        return [s for v in obj.values() for s in strings(v)]
     if isinstance(obj, (list, tuple)):
-        return [s for v in obj for s in _strings(v)]
+        return [s for v in obj for s in strings(v)]
     return []
 
 
 def allowed_values(analysis: dict, summary: dict) -> list[float]:
     """Every number of say/facts/caveats, the window's years, the period, and the language/article counts."""
-    values = {abs(t.value) for s in _strings(summary) for t in extract(s)}
+    values = {abs(t.value) for s in strings(summary) for t in extract(s)}
     start = date.fromisoformat(analysis["window"]["start"])
     end = date.fromisoformat(analysis["window"].get("last_day") or analysis["window"]["end"])
     values.update(range(start.year, end.year + 1))

@@ -60,6 +60,7 @@ def build_parser() -> argparse.ArgumentParser:
     pb = sub.add_parser("publish", help="check numbers in notes and build report.pdf + report.md")
     pb.add_argument("--project", help="project directory or id (default: latest)")
     pb.add_argument("--notes", help="notes file (default: <project>/notes.md)")
+    pb.add_argument("--ui", help="report language override, e.g. en (default: the project's language)")
 
     st = sub.add_parser("status", help="short summary of a project")
     st.add_argument("--project", help="project directory or id (default: latest)")
