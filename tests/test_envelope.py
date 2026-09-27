@@ -63,3 +63,19 @@ def test_emit_serializes_paths(tmp_path):
     out = io.StringIO()
     envelope.emit(envelope.make("ready", files={"data": tmp_path / "analysis.json"}), stream=out)
     assert json.loads(out.getvalue())["files"]["data"] == str(tmp_path / "analysis.json")
+
+
+def test_fit_adds_optional_lines_by_priority_and_notes_the_rest():
+    env = envelope.make("ready", say=["core"], caveats=["core caveat"])
+    optional = [("say", "x" * 1000), ("caveats", "y" * 1000), ("say", "z" * 1500), ("caveats", "short")]
+    out = envelope.fit(env, optional, note="more in analysis.json")
+    assert out["say"] == ["core", "x" * 1000] and out["caveats"] == ["core caveat", "y" * 1000, "short",
+                                                                    "more in analysis.json"]
+    text = io.StringIO()
+    envelope.emit(out, stream=text)
+    assert envelope.TRUNCATED_NOTE not in text.getvalue() and len(text.getvalue().encode()) <= envelope.MAX_BYTES
+
+
+def test_fit_without_skips_adds_no_note():
+    out = envelope.fit(envelope.make("ready", say=["a"]), [("caveats", "b")], note="more")
+    assert out["caveats"] == ["b"]

@@ -8,6 +8,7 @@ import math
 import sys
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timedelta, timezone
+from itertools import zip_longest
 
 import pandas as pd
 
@@ -16,7 +17,7 @@ from . import project as pj
 from . import series as sr
 from . import stats as st
 from .config import today_utc
-from .envelope import make
+from .envelope import fit, make
 from .errors import EXIT_NETWORK, EXIT_NODATA, EXIT_USAGE, WirError
 from .geo import spike_breakdown, top_countries
 from .i18n import lang_name, t
@@ -31,6 +32,7 @@ from .trust import TrustInputs, assess
 SCHEMA = 1
 TIME_BUDGET_S = 90.0
 MAX_GEO_EPISODES = 3      # spec 5.6: at most 6 daily DP files per run; one file per episode day
+COMPACT_FACTS_FROM = 3    # languages; smaller facts keep the headline of every language inside ~3 KB
 DAILY_CSV_YEARS = 5       # enough for verify's 36-month trend and the 104-week comparison
 ENDPOINTS = [
     "https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/{project}/all-access/user/{title}/daily/{start}/{end}",
@@ -313,15 +315,22 @@ def _finish(p: pj.Project, analysis: dict, extra_say: list[str] | None = None) -
     _write_notes_template(p, analysis["summary"])
     charts = _render_charts(analysis, p)
     s = analysis["summary"]
-    template = pj.rel(p.dir / "notes.template.md")
     nxt = []
     if any(r.get("usable") and r["trust"]["level"] != "high" and not r.get("verify")
            for r in analysis["langs"].values()):
         nxt.append({"why": t(ui, "next.verify"), "cmd": "wir verify"})
-    nxt.append({"why": t(ui, "next.publish", template=template), "cmd": "wir publish"})
-    files = {"data": pj.rel(p.dir / "analysis.json"), "notes_template": template, **charts}
-    return make("ready", project=pj.rel(p.dir), say=(extra_say or []) + s["say"], facts=s["facts"],
-                caveats=s["caveats"], next_=nxt, files=files)
+    nxt.append({"why": t(ui, "next.publish", template="notes.template.md"), "cmd": "wir publish"})
+    files = {"data": pj.rel(p.dir / "analysis.json"), "notes_template": pj.rel(p.dir / "notes.template.md"), **charts}
+    facts = s["facts"]
+    if len(facts) >= COMPACT_FACTS_FROM:  # countries and season are in the say lines and analysis.json
+        facts = {lang: {k: v for k, v in f.items() if k not in ("countries", "season")} for lang, f in facts.items()}
+    core_say, core_caveats = s["core"]["say"], s["core"]["caveats"]
+    env = make("ready", project=pj.rel(p.dir), say=(extra_say or []) + s["say"][:core_say], facts=facts,
+               caveats=s["caveats"][:core_caveats], next_=nxt, files=files)
+    rest_say = [("say", line) for line in s["say"][core_say:]]
+    rest_caveats = [("caveats", line) for line in s["caveats"][core_caveats:]]
+    optional = [item for pair in zip_longest(rest_say, rest_caveats) for item in pair if item]
+    return fit(env, optional, t(ui, "caveat.more"))
 
 
 def _budget_used_up(p: pj.Project, err: BudgetExceeded, done: int, total: int) -> dict:

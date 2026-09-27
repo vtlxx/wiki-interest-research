@@ -67,3 +67,20 @@ def test_young_article_without_growth():
     assert any("yearly change cannot be measured" in s for s in out["say"])
     assert out["facts"]["cs"]["growth"] == "—"
     assert any("created on 2025-06-10" in c for c in out["caveats"])
+
+
+def test_headlines_first_reasons_grouped_and_global_incidents_unprefixed():
+    a = analysis()
+    a["langs"]["pl"] = {**a["langs"]["cs"], "share_per_m": 2.0, "incidents": ["bots_2025_brazil", "bots_2025_11"]}
+    a["ranking"] = [{"lang": "cs", "score": 0.8, "components": {}, "eligible": True},
+                    {"lang": "pl", "score": 0.2, "components": {}, "eligible": True}]
+    out = summarize(a, "en")
+    say, cav = out["say"], out["caveats"]
+    assert say[0].startswith("Czech: 5.12") and say[1].startswith("Polish: 2.00") and say[2].startswith("Audiences")
+    assert out["core"] == {"say": 3, "caveats": 2}
+    assert sum("why this trust level" in s for s in say) == 1
+    assert any(s.startswith("Czech, Polish — why this trust level") for s in say)
+    bots = [c for c in cav if "Undetected bots" in c]
+    assert len(bots) == 1 and not bots[0].startswith("Czech")        # a Wikimedia-wide incident: no language prefix
+    backfill = next(i for i, c in enumerate(cav) if "removed retroactively" in c)
+    assert cav.index(bots[0]) < backfill                              # high severity before low

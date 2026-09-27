@@ -65,6 +65,9 @@ def test_multi_language_ranking(cli_fixtures, run_cli):
     assert any("Audiences to explore next" in s for s in a["summary"]["say"]) or not any(r["eligible"] for r in a["ranking"])
     assert all(a["langs"][l]["trend"] is None or a["langs"][l]["trend"]["q"] is not None for l in ("pl", "cs", "de", "uk"))
     assert len({a["langs"][l]["monthly"][-1]["month"] for l in ("pl", "cs", "de", "uk")}) == 1   # one shared window
+    for name in ("Polish:", "Czech:", "German:", "Ukrainian:"):             # every headline survives the 3 KB limit
+        assert any(s.startswith(name) for s in env["say"])
+    assert env["caveats"][:2] == a["summary"]["caveats"][:2]
 
 
 def test_analyze_without_usable_langs(cli_fixtures, run_cli):
