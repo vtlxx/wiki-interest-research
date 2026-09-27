@@ -22,7 +22,14 @@ MAX_RECORD_BYTES = 5_000_000
 
 
 class BudgetExceeded(Exception):
-    """Raised before a network request when the command's time budget is used up."""
+    """Raised before a network request when the command's time budget is used up.
+
+    `last_status` is the HTTP status that caused the pending retry (429 = still rate-limited), else None."""
+
+    def __init__(self, last_status: int | None = None):
+        super().__init__(f"time budget used up (last HTTP status: {last_status})" if last_status else
+                         "time budget used up")
+        self.last_status = last_status
 
 
 class Deadline:
@@ -94,12 +101,12 @@ class HttpClient:
                 return min(value, 60.0)
         return min(5.0 * (2 ** attempt), 60.0)
 
-    def _pause(self, seconds: float) -> None:
+    def _pause(self, seconds: float, status: int | None = None) -> None:
         """Sleep before a retry, unless that would run past the command's time budget."""
         if self.deadline:
             remaining = self.deadline.remaining()
             if remaining is not None and remaining < seconds:
-                raise BudgetExceeded()
+                raise BudgetExceeded(status)
         self.sleep(seconds)
 
     def _before_attempt(self) -> None:
@@ -109,16 +116,17 @@ class HttpClient:
         self.requests_made += 1
 
     def _give_up(self, status: int | None, attempts: int, detail: str = "") -> WirError:
+        tries = f"{attempts} attempt" + ("s" if attempts != 1 else "")
         if status == 429:
-            return WirError("RATE_LIMITED", f"Wikimedia rate limit (HTTP 429) after {attempts} attempts",
+            return WirError("RATE_LIMITED", f"Wikimedia rate limit (HTTP 429) after {tries}",
                             fix="Wait one minute and run the same command again, or add --offline to use cached data.",
                             exit_code=EXIT_NETWORK)
         if status is None:
             return WirError("NETWORK", f"cannot reach Wikimedia: {detail}",
                             fix="Check the internet connection and run the same command again; "
                                 "--offline works with cached data.", exit_code=EXIT_NETWORK)
-        what = f"HTTP {status}, {detail}" if detail else f"HTTP {status}"
-        return WirError("UPSTREAM_ERROR", f"Wikimedia answered {what} after {attempts} attempts",
+        what = f"HTTP {status} ({detail})" if detail else f"HTTP {status}"
+        return WirError("UPSTREAM_ERROR", f"Wikimedia answered {what} after {tries}",
                         fix="Run the same command again in a minute.", exit_code=EXIT_NETWORK)
 
     def _http_error(self, url: str, status: int, text: str) -> WirError:
@@ -147,6 +155,8 @@ class HttpClient:
             self._before_attempt()
             try:
                 resp = self._client.get(url)
+            except httpx.UnsupportedProtocol as exc:
+                raise self._give_up(None, attempt + 1, str(exc)) from exc
             except httpx.TransportError as exc:
                 if attempt == self.max_retries:
                     raise self._give_up(None, attempt + 1, str(exc)) from exc
@@ -159,7 +169,7 @@ class HttpClient:
                 if attempt == self.max_retries:
                     raise self._give_up(resp.status_code, attempt + 1)
                 print(f"[wir] HTTP {resp.status_code}, retrying", file=sys.stderr)
-                self._pause(self._backoff(attempt, resp.headers.get("retry-after")))
+                self._pause(self._backoff(attempt, resp.headers.get("retry-after")), resp.status_code)
                 continue
             return resp
         raise AssertionError("unreachable")
@@ -207,6 +217,7 @@ class HttpClient:
         for attempt in range(self.max_retries + 1):
             self._before_attempt()
             started = False
+            status = None
             try:
                 with self._client.stream("GET", url) as resp:
                     if resp.status_code == 404:
@@ -215,6 +226,7 @@ class HttpClient:
                         if attempt == self.max_retries:
                             raise self._give_up(resp.status_code, attempt + 1)
                         wait = self._backoff(attempt, resp.headers.get("retry-after"))
+                        status = resp.status_code
                         print(f"[wir] HTTP {resp.status_code}, retrying", file=sys.stderr)
                     elif resp.status_code >= 400:
                         raise self._http_error(url, resp.status_code, resp.read().decode("utf-8", "replace"))
@@ -223,6 +235,8 @@ class HttpClient:
                             started = True
                             yield line
                         return
+            except httpx.UnsupportedProtocol as exc:
+                raise self._give_up(None, attempt + 1, str(exc)) from exc
             except httpx.TransportError as exc:
                 if started or attempt == self.max_retries:
                     raise self._give_up(None, attempt + 1, str(exc)) from exc
@@ -230,7 +244,7 @@ class HttpClient:
                 print(f"[wir] {type(exc).__name__}, retrying", file=sys.stderr)
             except httpx.RequestError as exc:
                 raise self._give_up(None, attempt + 1, f"{type(exc).__name__}: {exc}") from exc
-            self._pause(wait)
+            self._pause(wait, status)
 
     def close(self) -> None:
         self._client.close()

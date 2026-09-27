@@ -198,15 +198,14 @@ def test_retry_after_is_sane(tmp_path, header, expected):
     assert ft.sleeps == [expected]
 
 
-@pytest.mark.parametrize("status", [400, 404])
-def test_client_errors_not_retried(tmp_path, status):
+def test_client_errors_not_retried(tmp_path):
     calls = []
-    client, _ = make_client(tmp_path, lambda r: calls.append(1) or httpx.Response(status, json=["not", "a", "dict"]))
-    try:
+    client, _ = make_client(tmp_path, lambda r: calls.append(1) or httpx.Response(400, json=["not", "a", "dict"]))
+    with pytest.raises(WirError) as e:
         client.get_json("https://x.org/e", ttl=60)
-    except WirError as e:
-        assert e.code == "BAD_REQUEST"
-    assert len(calls) == 1
+    assert e.value.code == "BAD_REQUEST" and len(calls) == 1
+    client, _ = make_client(tmp_path / "b", lambda r: calls.append(1) or httpx.Response(404))
+    assert client.get_json("https://x.org/e", ttl=60) is None and len(calls) == 2
 
 
 def test_forbidden_mentions_contact(tmp_path):
@@ -243,9 +242,9 @@ def test_backoff_does_not_overrun_deadline(tmp_path):
     deadline = Deadline(8, clock=ft.clock)
     client = HttpClient(Cache(tmp_path / "c.sqlite"), transport=httpx.MockTransport(lambda r: httpx.Response(429)),
                         sleep=ft.sleep, clock=ft.clock, deadline=deadline)
-    with pytest.raises(BudgetExceeded):
+    with pytest.raises(BudgetExceeded) as e:
         client.get_json("https://x.org/r", ttl=60)
-    assert ft.t <= 8
+    assert ft.t <= 8 and e.value.last_status == 429
 
 
 def test_build_url_appends_to_existing_query():
@@ -299,3 +298,17 @@ def test_nothing_on_stdout(tmp_path, capsys):
     client.get_json("https://x.org/q", ttl=60)
     captured = capsys.readouterr()
     assert captured.out == "" and "429" in captured.err
+
+
+def test_bad_scheme_not_retried(tmp_path):
+    client = HttpClient(Cache(tmp_path / "c.sqlite"), sleep=lambda s: pytest.fail("slept"))
+    with pytest.raises(WirError) as e:
+        client.get_json("htp://x.org/a", ttl=60)
+    assert e.value.code == "NETWORK" and e.value.exit_code == EXIT_NETWORK and client.requests_made == 1
+
+
+def test_attempts_wording(tmp_path):
+    client, _ = make_client(tmp_path, lambda r: httpx.Response(200, text="<html>"))
+    with pytest.raises(WirError) as e:
+        client.get_json("https://x.org/h", ttl=60)
+    assert e.value.message == "Wikimedia answered HTTP 200 (response is not JSON) after 1 attempt"
