@@ -88,6 +88,8 @@ def select_redirects(redirects: list[Redirect], main_views_60d: int | None, move
         if take:
             included.append(r.title)
             included_total += r.views_60d
+    if main_views_60d is None:  # unknown main views: shares of the total would be guesses, so claim none
+        return RedirectSelection(included, None, None, unchecked)
     coverage = included_total / known_total if known_total > 0 else None
     dominant = next((r.title for r in redirects if r.title in included and r.views_60d
                      and known_total > 0 and r.views_60d > dominant_share * known_total), None)

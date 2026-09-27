@@ -67,6 +67,17 @@ def test_select_redirects_no_data():
     assert sel.included == [] and sel.coverage is None
 
 
+
+def test_select_redirects_unknown_main_views_claims_no_coverage_or_dominance():
+    reds = [Redirect("Alias", 9000, None), Redirect("Tiny", 3, None), Redirect("Old title", None, None),
+            Redirect("Unknown", None, None)]
+    sel = sr.select_redirects(reds, main_views_60d=None, move_sources={"Old title"})
+    known_zero = sr.select_redirects(reds, main_views_60d=0, move_sources={"Old title"})
+    assert sel.included == known_zero.included == ["Alias", "Tiny", "Old title"]
+    assert sel.unchecked == ["Unknown"]
+    assert sel.coverage is None and sel.dominant is None
+    assert known_zero.dominant == "Alias"             # a known zero main article keeps the flag
+
 def test_combine_and_monthly_and_share():
     idx = pd.date_range("2026-01-01", "2026-02-28", freq="D")
     a = pd.Series(1.0, index=idx)
