@@ -80,3 +80,18 @@ def test_spike_geo_streams_once_and_caches(tmp_path):
 def test_spike_geo_before_dataset_start(tmp_path):
     p, _ = make(tmp_path, lambda r: pytest.fail("network used"))
     assert p.spike_geo(date(2022, 1, 1), ["Q525"]) == {"Q525": []}
+
+
+def test_spike_geo_mid_file_failure_caches_nothing(tmp_path, monkeypatch):
+    """HANDOFF open issue #6: iter_lines can raise WirError after already yielding some lines (connection lost
+    mid-file). Those partial lines must not be cached or aggregated; a later call must re-download the file."""
+    p, cache = make(tmp_path, lambda r: pytest.fail("network used"))
+
+    def broken_iter_lines(url):
+        yield "Canada\tCA\ten.wikipedia\t26751\tSun\tQ525\t126"
+        raise WirError("NETWORK", "connection lost mid-file")
+
+    monkeypatch.setattr(p.http, "iter_lines", broken_iter_lines)
+    with pytest.raises(WirError):
+        p.spike_geo(date(2026, 9, 26), ["Q525"])
+    assert cache.get_json("dp:2026-09-26:Q525") is None
