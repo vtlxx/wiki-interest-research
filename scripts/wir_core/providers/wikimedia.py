@@ -349,7 +349,8 @@ class WikimediaProvider:
     def spike_geo(self, day: date, qids: list[str]) -> dict[str, list[GeoRow]]:
         """Country x project breakdown of one day's traffic to the given Wikidata items, from the
         differential-privacy dataset. Streamed and cached per (day, qid), including empty results, so a
-        repeated call (even for a different qid of the same day) never re-downloads the file."""
+        repeated call for the same day never re-downloads the file, even when it only re-asks for a subset
+        of the QIDs already seen; a QID not seen before for that day still triggers one more download."""
         if day < DP_START:
             return {q: [] for q in qids}
         cache = self.http.cache
