@@ -29,3 +29,12 @@ def test_integer_and_share_by_ui():
 
 def test_day():
     assert fmt.day(date(2026, 3, 14)) == "2026-03-14"
+
+
+def test_tiny_share_keeps_significant_digits():
+    assert fmt.share(0.0034, "en") == "0.003" and fmt.share(0.0034, "uk") == "0,003"
+    assert fmt.share(0.0, "en") == "0.00"
+
+
+def test_number_by_ui():
+    assert fmt.number(0.2, "en") == "0.2" and fmt.number(0.2, "uk") == "0,2" and fmt.number(1.0, "uk") == "1"

@@ -65,6 +65,8 @@ def summarize(analysis: dict, ui: str) -> dict:
                                        others=", ".join(p for p, _ in geo["other_projects"][:3])))
             elif geo is not None and geo.get("below_threshold"):
                 lang_caveats.append(t(ui, "caveat.geo_threshold", lang=name, day=fmt.day(ep["peak"])))
+            elif geo is not None and geo.get("unpublished"):
+                lang_caveats.append(t(ui, "caveat.geo_unpublished", lang=name, day=fmt.day(ep["peak"])))
         facts[lang] = {
             "share_per_m": share,
             "growth": fmt.pct(g["g"]) if g else "—",
@@ -77,7 +79,8 @@ def summarize(analysis: dict, ui: str) -> dict:
         }
         if res.get("verify"):
             facts[lang]["verify"] = t(ui, f"verify.{res['verify']['outcome']}")
-        for inc_id in res.get("incidents", []):
+        # window incidents plus high-severity ones that lie only in the compared year (they cost trust)
+        for inc_id in dict.fromkeys(res.get("incidents", []) + res.get("incidents_high", [])):
             if inc_id in incidents:
                 incident_langs.setdefault(inc_id, []).append(name)
         if res.get("young"):
@@ -95,7 +98,7 @@ def summarize(analysis: dict, ui: str) -> dict:
     ranking_line: list[str] = []
     eligible = [r for r in analysis.get("ranking", []) if r["eligible"]]
     if len(analysis.get("ranking", [])) >= 2 and eligible:
-        weights = ", ".join(f"{k}={v:g}" for k, v in analysis["weights"].items())
+        weights = ", ".join(f"{k}={fmt.number(v, ui)}" for k, v in analysis["weights"].items())
         ranking_line.append(t(ui, "say.ranking", list=", ".join(lang_name(r["lang"], ui) for r in eligible[:3]),
                               weights=weights))
     reason_lines = [t(ui, "say.reasons", lang=", ".join(names), reasons=text) for text, names in reasons_by_text.items()]
@@ -103,10 +106,12 @@ def summarize(analysis: dict, ui: str) -> dict:
 
     incident_caveats = []
     for inc_id in sorted(incident_langs, key=lambda i: (SEVERITY_ORDER.get(incidents[i].severity, 3), incidents[i].start)):
-        note = getattr(incidents[inc_id], note_key)
-        wide = "*" in incidents[inc_id].projects   # Wikimedia-wide: naming one language would mislead
-        incident_caveats.append(note if wide else t(ui, "caveat.incident", lang=", ".join(incident_langs[inc_id]),
-                                                      note=note))
+        inc = incidents[inc_id]
+        dates = {"start": fmt.day(inc.start), "end": fmt.day(inc.end), "note": getattr(inc, note_key)}
+        if "*" in inc.projects:  # Wikimedia-wide: naming one language would mislead
+            incident_caveats.append(t(ui, "caveat.incident_wide", **dates))
+        else:
+            incident_caveats.append(t(ui, "caveat.incident", lang=", ".join(incident_langs[inc_id]), **dates))
     general = []
     if countries_lines:
         general.append(t(ui, "caveat.countries_rounded"))

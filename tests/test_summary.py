@@ -84,3 +84,20 @@ def test_headlines_first_reasons_grouped_and_global_incidents_unprefixed():
     assert len(bots) == 1 and not bots[0].startswith("Czech")        # a Wikimedia-wide incident: no language prefix
     backfill = next(i for i, c in enumerate(cav) if "removed retroactively" in c)
     assert cav.index(bots[0]) < backfill                              # high severity before low
+
+
+def test_incidents_are_dated_and_comparison_span_incidents_are_captioned():
+    a = analysis()
+    a["langs"]["cs"].update(incidents=[], incidents_high=["bots_2025_11"])   # only in the compared year
+    a["langs"]["cs"]["spikes"]["episodes"].append({"peak": "2026-08-30", "geo": {"unpublished": True}})
+    cav = summarize(a, "uk")["caveats"]
+    assert any(c.startswith("2025-11-01…2025-11-30: ") for c in cav)
+    assert any("2026-08-30" in c and "ще не опубліковано" in c for c in cav)
+
+
+def test_weights_use_the_ui_number_format():
+    a = analysis("uk")
+    a["langs"]["pl"] = {**a["langs"]["cs"]}
+    a["ranking"] = [{"lang": "cs", "score": 0.8, "components": {}, "eligible": True},
+                    {"lang": "pl", "score": 0.2, "components": {}, "eligible": True}]
+    assert any("level=0,35" in s for s in summarize(a, "uk")["say"])
