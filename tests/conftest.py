@@ -12,6 +12,7 @@ from wir_core.fixtures import FixtureTransport  # noqa: E402
 from wir_core.net import HttpClient  # noqa: E402
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
+REAL_CONTACT = os.environ.get("WIR_CONTACT")  # wir_env replaces it; live recording must not send a fake contact
 
 
 @pytest.fixture(autouse=True)
@@ -61,3 +62,21 @@ def recorded_client(tmp_path, monkeypatch):
                           min_interval=0)
 
     return _make
+
+
+@pytest.fixture
+def cli_fixtures(monkeypatch, wir_env):
+    """In-process CLI runs replay tests/fixtures/<name>/ (or record into it with WIR_REFRESH_FIXTURES=1)."""
+    def _use(name: str) -> Path:
+        directory = FIXTURES / name
+        if os.environ.get("WIR_REFRESH_FIXTURES") == "1":
+            monkeypatch.setenv("WIR_RECORD", str(directory))
+            monkeypatch.delenv("WIR_FIXTURES", raising=False)
+            if REAL_CONTACT:
+                monkeypatch.setenv("WIR_CONTACT", REAL_CONTACT)
+            else:
+                monkeypatch.delenv("WIR_CONTACT", raising=False)  # user agent falls back to DEFAULT_CONTACT
+        else:
+            monkeypatch.setenv("WIR_FIXTURES", str(directory))
+        return directory
+    return _use
