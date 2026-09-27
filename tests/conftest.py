@@ -7,6 +7,13 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 
+@pytest.fixture(autouse=True)
+def _no_ambient_record_replay(monkeypatch):
+    """A developer's exported WIR_RECORD / WIR_FIXTURES must not leak into unit tests."""
+    monkeypatch.delenv("WIR_RECORD", raising=False)
+    monkeypatch.delenv("WIR_FIXTURES", raising=False)
+
+
 @pytest.fixture
 def wir_env(monkeypatch, tmp_path):
     """Isolate cache, output dir and 'today' for every test that runs commands."""
