@@ -2,3 +2,7 @@
 __pycache__/
 .pytest_cache/
 wiki-interest-output/
+
+# eval runs: unscrubbed transcripts, cache and PDFs stay local
+evals/runs/*/raw/
+evals/runs/*/manual/raw/
