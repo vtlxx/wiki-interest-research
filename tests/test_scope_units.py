@@ -179,9 +179,6 @@ def test_add_article_dedupes_and_needs_a_main_article(fake):
     env = scope.run_scope(scope_args(add_article=["uk=Голодування"]))
     assert env["facts"]["uk"]["articles"] == 2 and not (pj.load(None).dir / ".stale").exists()
     assert [a.role for a in pj.load(None).entries["uk"].articles] == ["main", "extra"]
-    with pytest.raises(WirError) as err:
-        scope.run_scope(scope_args(add_article=["pl=Głodówka lecznicza"]))
-    assert err.value.code == "NO_MAIN_ARTICLE" and "--set pl=" in err.value.fix
 
 
 def test_edit_marks_analysed_project_stale_and_fork_keeps_original(fake):
@@ -255,3 +252,18 @@ def test_dropping_the_last_language_is_refused_and_the_project_is_kept(fake):
     assert err.value.fix == "wir scope --add-lang <code>"
     build_parser().parse_args(shlex.split(err.value.fix)[1:])
     assert pj.load(None).langs == ["cs"] and "cs" in pj.load(None).entries
+
+
+@pytest.mark.parametrize("ui", ["en", "uk"])
+def test_basket_article_without_a_main_article_asks_instead_of_promoting_it(fake, ui):
+    scope.run_scope(scope_args("Q1666254", langs="pl,cs", ui=ui))
+    env = scope.run_scope(scope_args(add_article=["pl=Głodówka lecznicza", "cs=Přerušovaný půst"]))
+    assert env["state"] == "input_required" and "error" not in env
+    assert env["ask"]["question"] == t(ui, "ask.no_main", lang=scope.lang_name("pl", ui), title="Głodówka lecznicza")
+    labels = [o["label"] for o in env["ask"]["options"]]
+    assert labels == [t(ui, "opt.use_as_main", title="Głodówka lecznicza"), t(ui, "opt.choose_main")]
+    assert cmds(env) == ["wir scope --set pl='Głodówka lecznicza'", 'wir scope --set pl="<title>"']
+    for cmd in cmds(env):
+        build_parser().parse_args(shlex.split(cmd)[1:])
+    saved = pj.load(None)
+    assert saved.entries["pl"].status == MISSING and not saved.entries["pl"].articles

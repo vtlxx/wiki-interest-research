@@ -92,6 +92,15 @@ def _title_ask(provider, p: pj.Project, lang: str, title: str, reason_key: str, 
         "options": options})
 
 
+def _no_main_ask(p: pj.Project, lang: str, title: str, notes: list[str]) -> dict:
+    """A related article needs a main one; promoting it must be the user's explicit choice, never a silent fix."""
+    options = [{"label": t(p.ui, "opt.use_as_main", title=title),
+                "cmd": f"wir scope --set {lang}={shlex.quote(title)}"},
+               {"label": t(p.ui, "opt.choose_main"), "cmd": f'wir scope --set {lang}="<title>"'}]
+    return make("input_required", project=pj.rel(p.dir), caveats=notes, ask={
+        "question": t(p.ui, "ask.no_main", lang=lang_name(lang, p.ui), title=title), "options": options})
+
+
 def _search_text(p: pj.Project, provider) -> str:
     """The label is in the user's language; another wiki is searched with the English one when it exists."""
     if p.qid and p.ui != "en":
@@ -202,6 +211,7 @@ def _edit(args, p: pj.Project, provider, notes: list[str], window: bool) -> dict
     ui = p.ui
     changed = False
     bad: tuple[str, str, str, str] | None = None
+    no_main: tuple[str, str] | None = None
     for code in args.drop_lang:
         lang, _ = provider.resolve_lang(code)
         if lang in p.langs:
@@ -220,8 +230,8 @@ def _edit(args, p: pj.Project, provider, notes: list[str], window: bool) -> dict
         lang = _resolve_langs(provider, [code], ui, notes)[0]
         entry = _entry(p, lang)
         if role == "extra" and not entry.main():
-            raise WirError("NO_MAIN_ARTICLE", f"{lang} has no main article to add related articles to",
-                           fix=f"wir scope --set {lang}={shlex.quote(title)}", exit_code=EXIT_USAGE)
+            no_main = no_main or (lang, title)
+            continue
         info = provider.inspect(lang, [title])[title]
         if info.status in PROBLEM_STATUSES:
             bad = bad or (lang, title, f"reason.{info.status}", "--set" if role == "main" else "--add-article")
@@ -252,7 +262,9 @@ def _edit(args, p: pj.Project, provider, notes: list[str], window: bool) -> dict
                        fix="wir scope --add-lang <code>", exit_code=EXIT_USAGE)
     if changed:
         _save_edited(p)
-    return _title_ask(provider, p, *bad, notes) if bad else None
+    if bad:
+        return _title_ask(provider, p, *bad, notes)
+    return _no_main_ask(p, *no_main, notes) if no_main else None
 
 
 def run_scope(args) -> dict:
