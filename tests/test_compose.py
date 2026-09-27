@@ -17,7 +17,7 @@ def summary(n_langs):
     caveats = ["Перегляди показують цікавість, а не готовність платити.", "Мовний розділ — не країна."]
     caveats += [f"2025-11-01…2025-11-30: застереження номер {i} " + "x" * 80 for i in range(5)]
     return {"say": say, "caveats": caveats, "facts": {l: dict(fact) for l in langs},
-            "core": {"say": n_langs + 1, "headlines": n_langs, "caveats": 2}}
+            "core": {"say": n_langs + 1, "headlines": n_langs, "reasons": n_langs, "caveats": 2}}
 
 
 def emitted(env):
@@ -28,7 +28,7 @@ def emitted(env):
 
 def compose(n, extra=()):
     nxt = [{"why": "Перевірити стійкість висновків", "cmd": "wir verify"},
-           {"why": "Скопіюйте notes.template.md у notes.md, заповніть і зберіть звіт", "cmd": "wir publish"}]
+           {"why": "Зібрати односторінковий PDF-звіт", "cmd": "wir publish"}]
     files = {"data": "wiki-interest-output/2026-09-27-q1860/analysis.json",
              "notes_template": "wiki-interest-output/2026-09-27-q1860/notes.template.md"}
     return compose_envelope("uk", summary(n), list(extra), project="wiki-interest-output/2026-09-27-q1860",
@@ -51,3 +51,14 @@ def test_core_survives_for_many_languages_and_verify_lines():
 def test_small_projects_keep_full_facts_and_all_lines():
     env = json.loads(emitted(compose(1)))
     assert env["facts"]["мова0"]["countries"] == ["PL 87%", "US 2%", "DE 2%"]
+
+
+def test_trust_reasons_are_kept_before_verify_and_detail_lines():
+    for n in (2, 4):
+        s = summary(n)
+        extra = [f"мова{i}: перевірка стійкості — висновок слабшає; довіра тепер низька." for i in range(n)]
+        env = compose_envelope("uk", s, extra, project="p", next_=[], files={"data": "analysis.json"})
+        first_reason = s["say"][s["core"]["say"]]
+        assert first_reason in env["say"]
+        if extra[0] in env["say"]:
+            assert env["say"].index(first_reason) < env["say"].index(extra[0])

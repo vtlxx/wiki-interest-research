@@ -340,7 +340,8 @@ def _render_charts(analysis: dict, p: pj.Project) -> dict[str, str]:
 
 def compose_envelope(ui: str, summary: dict, extra_say: list[str], *, project: str, next_: list, files: dict) -> dict:
     """The ~3 KB answer: every headline, the ranking and the two core caveats first; facts as detailed as still
-    fits; then optional lines (verify results, details, other caveats) in priority order; one note for the rest."""
+    fits; then optional lines (trust reasons, verify results, details, other caveats) in priority order; one note
+    for the rest."""
     note = t(ui, "caveat.more")
     core, say, caveats, facts = summary["core"], summary["say"], summary["caveats"], summary["facts"]
     heads, ranking = say[:core["headlines"]], say[core["headlines"]:core["say"]]
@@ -359,9 +360,11 @@ def compose_envelope(ui: str, summary: dict, extra_say: list[str], *, project: s
     while not fits(env, note) and len(heads) > 1:   # only with very many languages: keep ranking and caveats
         heads, dropped = heads[:-1], True
         env["say"] = heads + ranking
-    rest_say = [("say", line) for line in say[core["say"]:]]
+    n_reasons = core.get("reasons", 0)   # "why this trust level" lines: the agent quotes them, so they come first
+    reasons = [("say", line) for line in say[core["say"]:core["say"] + n_reasons]]
+    rest_say = [("say", line) for line in say[core["say"] + n_reasons:]]
     rest_caveats = [("caveats", line) for line in caveats[core["caveats"]:]]
-    optional = [("say", line) for line in extra_say] + [
+    optional = reasons + [("say", line) for line in extra_say] + [
         item for pair in zip_longest(rest_say, rest_caveats) for item in pair if item]
     env = fit(env, optional, note)
     if dropped and note not in env["caveats"]:

@@ -77,7 +77,7 @@ def test_headlines_first_reasons_grouped_and_global_incidents_unprefixed():
     out = summarize(a, "en")
     say, cav = out["say"], out["caveats"]
     assert say[0].startswith("Czech: 5.12") and say[1].startswith("Polish: 2.00") and say[2].startswith("Audiences")
-    assert out["core"] == {"say": 3, "headlines": 2, "caveats": 2}
+    assert out["core"] == {"say": 3, "headlines": 2, "reasons": 1, "caveats": 2}
     assert sum("why this trust level" in s for s in say) == 1
     assert any(s.startswith("Czech, Polish — why this trust level") for s in say)
     bots = [c for c in cav if "Undetected bots" in c]
@@ -101,3 +101,21 @@ def test_weights_use_the_ui_number_format():
     a["ranking"] = [{"lang": "cs", "score": 0.8, "components": {}, "eligible": True},
                     {"lang": "pl", "score": 0.2, "components": {}, "eligible": True}]
     assert any("level=0,35" in s for s in summarize(a, "uk")["say"])
+
+
+def test_no_eligible_language_still_gets_a_ranking_line_in_the_core():
+    a = analysis()
+    a["langs"]["pl"] = {**a["langs"]["cs"], "share_per_m": 2.0}
+    a["ranking"] = [{"lang": "pl", "score": 0.8, "components": {}, "eligible": False},
+                    {"lang": "cs", "score": 0.2, "components": {}, "eligible": False}]
+    out = summarize(a, "en")
+    line = next(i for i, s in enumerate(out["say"]) if s.startswith("No audience can be recommended yet"))
+    assert line < out["core"]["say"] and "Polish, Czech" in out["say"][line]
+    assert not any(s.startswith("Audiences to explore next") for s in out["say"])
+
+
+def test_core_counts_the_grouped_trust_reason_lines_after_the_ranking():
+    out = summarize(analysis(), "en")
+    n = out["core"]["reasons"]
+    reasons = out["say"][out["core"]["say"]:out["core"]["say"] + n]
+    assert n == 1 and reasons[0].startswith("Czech — why this trust level:")

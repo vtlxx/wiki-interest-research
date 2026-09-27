@@ -96,11 +96,14 @@ def summarize(analysis: dict, ui: str) -> dict:
             lang_caveats.append(t(ui, "caveat.unchecked_redirects", lang=name, n=len(red["unchecked"])))
 
     ranking_line: list[str] = []
-    eligible = [r for r in analysis.get("ranking", []) if r["eligible"]]
-    if len(analysis.get("ranking", [])) >= 2 and eligible:
+    ranking = analysis.get("ranking", [])
+    eligible = [r for r in ranking if r["eligible"]]
+    if len(ranking) >= 2 and eligible:
         weights = ", ".join(f"{k}={fmt.number(v, ui)}" for k, v in analysis["weights"].items())
         ranking_line.append(t(ui, "say.ranking", list=", ".join(lang_name(r["lang"], ui) for r in eligible[:3]),
                               weights=weights))
+    elif len(ranking) >= 2:  # say so explicitly, or the agent reuses an older ranking or invents one
+        ranking_line.append(t(ui, "say.ranking_none", list=", ".join(lang_name(r["lang"], ui) for r in ranking[:3])))
     reason_lines = [t(ui, "say.reasons", lang=", ".join(names), reasons=text) for text, names in reasons_by_text.items()]
     say = headlines + ranking_line + reason_lines + context + seasons + countries_lines + geo_lines
 
@@ -124,4 +127,5 @@ def summarize(analysis: dict, ui: str) -> dict:
         general.append(t(ui, "caveat.geo_skipped"))
     caveats += incident_caveats + lang_caveats + general
     return {"say": say, "facts": facts, "caveats": caveats,
-            "core": {"say": len(headlines) + len(ranking_line), "headlines": len(headlines), "caveats": 2}}
+            "core": {"say": len(headlines) + len(ranking_line), "headlines": len(headlines),
+                     "reasons": len(reason_lines), "caveats": 2}}
