@@ -203,7 +203,8 @@ class HttpClient:
             data = resp.json()
         except ValueError as exc:
             raise self._give_up(resp.status_code, 1, "response is not JSON") from exc
-        self.cache.put(full, 200, resp.content, ttl)
+        if "mediawiki-api-error" not in resp.headers:  # MediaWiki reports errors as HTTP 200; do not keep them
+            self.cache.put(full, 200, resp.content, ttl)
         return data
 
     def iter_lines(self, url: str) -> Iterator[str]:

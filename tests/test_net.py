@@ -312,3 +312,17 @@ def test_attempts_wording(tmp_path):
     with pytest.raises(WirError) as e:
         client.get_json("https://x.org/h", ttl=60)
     assert e.value.message == "Wikimedia answered HTTP 200 (response is not JSON) after 1 attempt"
+
+
+def test_mediawiki_api_error_not_cached(tmp_path):
+    calls = []
+
+    def handler(request):
+        calls.append(1)
+        return httpx.Response(200, json={"error": {"code": "maxlag", "info": "lagged"}},
+                              headers={"MediaWiki-API-Error": "maxlag"})
+
+    client, _ = make_client(tmp_path, handler)
+    assert client.get_json("https://x.org/w/api.php", ttl=60)["error"]["code"] == "maxlag"
+    client.get_json("https://x.org/w/api.php", ttl=60)
+    assert len(calls) == 2
