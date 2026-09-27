@@ -40,6 +40,14 @@ def _parse_items(data: dict | None) -> dict[date, int]:
     return out
 
 
+def _is_recent_month(year: int, month: int) -> bool:
+    """True when (year, month) is one of the last 13 months relative to today (spec 5.5: that window is
+    still short-TTL because Wikimedia backfills corrections into it, per spec A.5)."""
+    today = today_utc()
+    months_ago = (today.year - year) * 12 + (today.month - month)
+    return 0 <= months_ago <= 12
+
+
 def _chunks(items: list, size: int):
     for i in range(0, len(items), size):
         yield items[i:i + size]
@@ -340,8 +348,9 @@ class WikimediaProvider:
         return _parse_items(self._series(url))
 
     def countries(self, lang: str, year: int, month: int) -> list[tuple[str, int]]:
+        ttl = TTL_RECENT if _is_recent_month(year, month) else TTL_OLD
         data = self.http.get_json(f"{AQS}/top-by-country/{self.aqs_project(lang)}/all-access/{year}/{month:02d}",
-                                  ttl=TTL_OLD)
+                                  ttl=ttl)
         items = (data or {}).get("items", [])
         rows = items[0].get("countries", []) if items else []
         return [(r["country"], int(r["views_ceil"])) for r in rows if r.get("country") not in (None, "--")]

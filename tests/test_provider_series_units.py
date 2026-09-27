@@ -3,14 +3,23 @@ from datetime import date
 import httpx
 import pytest
 
-from wir_core.cache import Cache
+from wir_core.cache import TTL_OLD, TTL_RECENT, Cache
 from wir_core.errors import WirError
 from wir_core.net import HttpClient
 from wir_core.providers import get_provider
+from wir_core.providers.wikimedia import AQS
 
 ITEMS = {"items": [
     {"project": "cs.wikipedia", "article": "X", "granularity": "daily", "timestamp": "2026092500", "views": 5},
     {"project": "cs.wikipedia", "article": "X", "granularity": "daily", "timestamp": "2026092300", "views": 2}]}
+
+
+class Clock:
+    def __init__(self, t=10_000.0):
+        self.t = t
+
+    def __call__(self):
+        return self.t
 
 
 def make(tmp_path, handler, offline=False, cache=None):
@@ -60,6 +69,35 @@ def test_countries_skip_unknown(tmp_path):
                                      {"country": "US", "views": "1000000-9999999", "rank": 2, "views_ceil": 5533000}]}]}
     p, _ = make(tmp_path, lambda r: httpx.Response(200, json=body))
     assert p.countries("uk", 2026, 8) == [("UA", 32015000), ("US", 5533000)]
+
+
+def test_countries_uses_recent_ttl_within_last_13_months(tmp_path, monkeypatch):
+    """Spec 5.5: a series touching the last 13 months gets the short TTL_RECENT, because Wikimedia can
+    still backfill corrections into it (spec A.5); countries() must follow the same rule, not TTL_OLD
+    unconditionally (the current month is well within the last 13 months)."""
+    monkeypatch.setenv("WIR_TODAY", "2026-09-27")
+    body = {"items": [{"countries": [{"country": "UA", "views_ceil": 100}]}]}
+    clock = Clock()
+    cache = Cache(tmp_path / "c.sqlite", clock=clock)
+    p, _ = make(tmp_path, lambda r: httpx.Response(200, json=body), cache=cache)
+    p.countries("uk", 2026, 9)
+    key = f"{AQS}/top-by-country/uk.wikipedia/all-access/2026/09"
+    clock.t += TTL_RECENT + 1
+    assert cache.get(key) is None  # expired: cached with TTL_RECENT, not the much longer TTL_OLD
+
+
+def test_countries_uses_old_ttl_outside_last_13_months(tmp_path, monkeypatch):
+    monkeypatch.setenv("WIR_TODAY", "2026-09-27")
+    body = {"items": [{"countries": [{"country": "UA", "views_ceil": 100}]}]}
+    clock = Clock()
+    cache = Cache(tmp_path / "c.sqlite", clock=clock)
+    p, _ = make(tmp_path, lambda r: httpx.Response(200, json=body), cache=cache)
+    p.countries("uk", 2020, 1)
+    key = f"{AQS}/top-by-country/uk.wikipedia/all-access/2020/01"
+    clock.t += TTL_RECENT + 1
+    assert cache.get(key) is not None  # not yet expired: TTL_RECENT alone would have expired it
+    clock.t += TTL_OLD - TTL_RECENT
+    assert cache.get(key) is None  # expired once the full TTL_OLD window has passed
 
 
 def test_spike_geo_streams_once_and_caches(tmp_path):
