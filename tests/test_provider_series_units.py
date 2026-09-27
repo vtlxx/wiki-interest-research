@@ -62,6 +62,32 @@ def test_offline_falls_back_to_latest_cached_series(tmp_path, monkeypatch):
         offline.article_daily("cs", "Never fetched")
 
 
+
+def test_series_through_reports_the_end_date_of_the_fetched_series(tmp_path, monkeypatch):
+    monkeypatch.setenv("WIR_TODAY", "2026-09-27")
+    p, _ = make(tmp_path, lambda r: httpx.Response(200, json=ITEMS))
+    assert p.series_through("cs", "X") is None and p.series_through("cs") is None
+    p.article_daily("cs", "X")
+    p.project_daily("cs")
+    assert p.series_through("cs", "X") == date(2026, 9, 26)
+    assert p.series_through("cs") == date(2026, 9, 26)
+    assert p.series_through("cs", "Y") is None and p.series_through("uk") is None
+
+
+def test_series_through_offline_reports_the_cached_copy_actually_used(tmp_path, monkeypatch):
+    monkeypatch.setenv("WIR_TODAY", "2026-09-27")
+    first, cache = make(tmp_path, lambda r: httpx.Response(200, json=ITEMS))
+    first.article_daily("cs", "X")                     # article cached through 2026-09-26
+    monkeypatch.setenv("WIR_TODAY", "2026-09-30")
+    later, _ = make(tmp_path, lambda r: httpx.Response(200, json=ITEMS), cache=cache)
+    later.project_daily("cs")                          # project cached through 2026-09-29
+    monkeypatch.setenv("WIR_TODAY", "2026-10-02")
+    offline, _ = make(tmp_path, lambda r: pytest.fail("network used"), offline=True, cache=cache)
+    offline.article_daily("cs", "X")
+    offline.project_daily("cs")
+    assert offline.series_through("cs", "X") == date(2026, 9, 26)
+    assert offline.series_through("cs") == date(2026, 9, 29)
+
 def test_countries_skip_unknown(tmp_path):
     body = {"items": [{"project": "uk.wikipedia", "access": "all-access", "year": "2026", "month": "08",
                        "countries": [{"country": "UA", "views": "10000000-99999999", "rank": 1, "views_ceil": 32015000},

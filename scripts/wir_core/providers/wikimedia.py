@@ -48,6 +48,11 @@ def _is_recent_month(year: int, month: int) -> bool:
     return 0 <= months_ago <= 12
 
 
+def _segment_date(segment: str) -> date:
+    """End-date URL segment of an AQS series ('YYYYMMDD' or 'YYYYMMDDHH') as a date."""
+    return date(int(segment[:4]), int(segment[4:6]), int(segment[6:8]))
+
+
 def _chunks(items: list, size: int):
     for i in range(0, len(items), size):
         yield items[i:i + size]
@@ -88,6 +93,7 @@ class WikimediaProvider:
         self._sites_cache: dict[str, dict] | None = None
         self._closed: set[str] = set()
         self._created_cache: dict[tuple[str, str], date | None] = {}
+        self._through: dict[str, date] = {}  # series URL without its end-date segment -> end date used
 
     # ---- languages ---------------------------------------------------------------------------
     def _sites(self) -> dict[str, dict]:
@@ -328,24 +334,40 @@ class WikimediaProvider:
     # ---- pageview series (AQS) ------------------------------------------------------------------
     def _series(self, url: str) -> dict | None:
         """Series URLs end with the end date; offline mode falls back to the newest cached copy of the
-        SAME series (the cache key up to the final '/' — the date segment is what varies day to day)."""
+        SAME series (the cache key up to the final '/' — the date segment is what varies day to day).
+        The end date of the copy actually returned is remembered for series_through()."""
+        prefix, end = url.rsplit("/", 1)
         if self.http.offline:
-            hit = self.http.cache.latest(url.rsplit("/", 1)[0] + "/")
+            hit = self.http.cache.latest(prefix + "/")
             if hit is not None:
-                _key, status, body = hit
+                key, status, body = hit
+                self._through[prefix] = _segment_date(key.rsplit("/", 1)[1])
                 return None if status == 404 else json.loads(body)
-        return self.http.get_json(url, ttl=TTL_RECENT)
+        data = self.http.get_json(url, ttl=TTL_RECENT)
+        self._through[prefix] = _segment_date(end)
+        return data
+
+    def _article_prefix(self, lang: str, title: str) -> str:
+        return (f"{AQS}/per-article/{self.aqs_project(lang)}/all-access/user/{encode_title(title)}"
+                f"/daily/{DATA_START:%Y%m%d}")
+
+    def _project_prefix(self, lang: str) -> str:
+        return f"{AQS}/aggregate/{self.aqs_project(lang)}/all-access/user/daily/{DATA_START:%Y%m%d}00"
 
     def article_daily(self, lang: str, title: str) -> dict[date, int]:
         end = today_utc() - timedelta(days=1)
-        url = (f"{AQS}/per-article/{self.aqs_project(lang)}/all-access/user/{encode_title(title)}"
-               f"/daily/{DATA_START:%Y%m%d}/{end:%Y%m%d}")
-        return _parse_items(self._series(url))
+        return _parse_items(self._series(f"{self._article_prefix(lang, title)}/{end:%Y%m%d}"))
 
     def project_daily(self, lang: str) -> dict[date, int]:
         end = today_utc() - timedelta(days=1)
-        url = f"{AQS}/aggregate/{self.aqs_project(lang)}/all-access/user/daily/{DATA_START:%Y%m%d}00/{end:%Y%m%d}00"
-        return _parse_items(self._series(url))
+        return _parse_items(self._series(f"{self._project_prefix(lang)}/{end:%Y%m%d}00"))
+
+    def series_through(self, lang: str, title: str | None = None) -> date | None:
+        """Last day covered by the daily series returned earlier by this provider (title None = the project
+        series), or None if it was not fetched. Offline, article and project copies can end on different
+        days; callers should cut the analysis at the earliest of these dates."""
+        prefix = self._project_prefix(lang) if title is None else self._article_prefix(lang, title)
+        return self._through.get(prefix)
 
     def countries(self, lang: str, year: int, month: int) -> list[tuple[str, int]]:
         ttl = TTL_RECENT if _is_recent_month(year, month) else TTL_OLD
