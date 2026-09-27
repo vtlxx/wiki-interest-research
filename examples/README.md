@@ -5,7 +5,7 @@ news spike. Every number in these files comes from the tool; the short conclusio
 tool's facts block and passed `wir publish`'s number check.
 
 - Data: Wikimedia pageviews through 2026-09-26, window 2024-09-01 – 2026-08-31, fetched 2026-09-27.
-- Tool commit: `2276683`.
+- Tool commit: `717be22`.
 - Numbers change when re-run: Wikimedia data changes every day and past months are sometimes corrected
   (bot traffic removed afterwards), so a re-run gives a different window and may give different values.
 

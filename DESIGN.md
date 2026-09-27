@@ -9,7 +9,7 @@ Contents: 1 what it optimises for · 2 the pipeline · 3 decisions · 4 trade-of
 caught.
 
 Unless stated otherwise, evidence was measured on 2026-09-27 over the window 2024-09-01 – 2026-08-31 (data
-through 2026-09-26) with the tool at commit `2276683`. Wikimedia data changes, so a re-run gives slightly
+through 2026-09-26) with the tool at commit `717be22`. Wikimedia data changes, so a re-run gives slightly
 different numbers.
 
 ## 1. What the skill optimises for
@@ -444,24 +444,24 @@ Concrete errors these checks caught:
   intermittent fasting; checking the Wikidata sitelinks showed Polish Wikipedia has none. That became the design
   rule that the tool reports a missing article and asks instead of guessing.
 - **Trend slopes biased toward zero** by a small constant added to every month before taking logarithms; the
-  seasonal trend also used a plain slope. Caught by review, fixed in `402c088`.
+  seasonal trend also used a plain slope. Caught by review, fixed in `56d6928`.
 - **The autocorrelation correction could make the trend test more significant** than the plain test under
-  negative autocorrelation. Caught by review, fixed in `f37878e`.
+  negative autocorrelation. Caught by review, fixed in `996310e`.
 - **A false "declining"** when an offline run paired fresh edition totals with a stale article series whose
-  missing tail counted as zeros. Caught by review, fixed in `b09c447`.
+  missing tail counted as zeros. Caught by review, fixed in `36947b9`.
 - **Days before an article existed counted as zero interest,** inflating its growth. Caught by review, fixed in
-  `a9e4d8e`.
-- **One trust rule deducted twice** when both of its triggers fired. Caught by review, fixed in `994e114`.
+  `542e1cd`.
+- **One trust rule deducted twice** when both of its triggers fired. Caught by review, fixed in `f68daeb`.
 - **A daily country file not yet published was cached as "no rows"** for a year. Caught by review, fixed in
-  `0985e88`.
+  `223b0f9`.
 - **With five languages the answer lost headlines and the ranking** when it was shortened to fit 3 KB. Caught by
-  a real run of example 3 and by review, fixed in `7f3c15d` and `3ebf155`.
+  a real run of example 3 and by review, fixed in `4f8b212` and `2d93da4`.
 - **Dates in caveats leaked day numbers into the allowed set,** so an invented "30%" could pass the number
-  check. Caught by review, fixed in `6420601`.
+  check. Caught by review, fixed in `abf0608`.
 - **Charts were unreadable at PDF size** and date labels overlapped on long windows. Caught by the reviewer opening
-  every chart, fixed in `ce4e47c`.
+  every chart, fixed in `22146c4`.
 - **The small model invented next steps and trust reasons and skipped the robustness check** (fixed in
-  `a546cff`), **and quoted ranking scores read from report.md** (fixed in `f933b8d`). Caught by the Haiku 4.5
+  `6d71714`), **and quoted ranking scores read from report.md** (fixed in `7c668c6`). Caught by the Haiku 4.5
   dry-runs.
 - **Seasonality strength on pure noise came out too high with 36–48 months** of data. Found while writing the noise
   test before the code; the test uses 10 years and the bias is documented as a limitation.
