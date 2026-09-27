@@ -40,3 +40,14 @@ def test_overwrite_updates_value(tmp_path):
     c.put("k", 200, b"1", 60)
     c.put("k", 200, b"2", 60)
     assert c.get("k") == (200, b"2")
+
+
+def test_latest_by_prefix(tmp_path):
+    clock = Clock(100.0)
+    c = Cache(tmp_path / "c.sqlite", clock=clock)
+    c.put("https://a/x/20260101", 200, b"old", 1)
+    clock.t = 200.0
+    c.put("https://a/x/20260102", 200, b"new", 1)
+    c.put("https://a/y/20260103", 200, b"other", 1)
+    assert c.latest("https://a/x/") == ("https://a/x/20260102", 200, b"new")
+    assert c.latest("https://a/z/") is None

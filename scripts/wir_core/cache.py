@@ -46,6 +46,13 @@ class Cache:
                          (key, status, zlib.compress(body), self._clock(), int(ttl_s)))
         self._db.commit()
 
+    def latest(self, prefix: str) -> tuple[str, int, bytes] | None:
+        """Newest entry (by fetch time, ignoring TTL) whose key starts with `prefix`, or None."""
+        row = self._db.execute(
+            "SELECT key, status, body FROM http WHERE substr(key, 1, ?) = ? ORDER BY fetched_at DESC LIMIT 1",
+            (len(prefix), prefix)).fetchone()
+        return None if row is None else (row[0], row[1], zlib.decompress(row[2]))
+
     def get_json(self, key: str, allow_stale: bool = False) -> Any | None:
         hit = self.get(key, allow_stale=allow_stale)
         return None if hit is None else json.loads(hit[1])
